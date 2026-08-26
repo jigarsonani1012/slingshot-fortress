@@ -698,5 +698,605 @@ const THEME_PAT = [
         for (let x = 0; x <= s; x += 16) g.lineTo(x, y + Math.sin(x * 0.05 + y) * 1.2);
         g.stroke();
       }
+    }),
+    stone: makePat((g, s) => {
+      const r = mulberry32(41); g.fillStyle = '#7a91a6'; g.fillRect(0, 0, s, s);
+      for (let k = 0; k < 35; k++) {
+        const x = r() * s, y = r() * s, rr = 4 + r() * 12;
+        g.fillStyle = r() < 0.5 ? 'rgba(255,255,255,.22)' : 'rgba(30,48,65,.2)';
+        g.beginPath(); g.arc(x, y, rr, 0, 6.28); g.fill();
+      }
+      for (let k = 0; k < 140; k++) {
+        g.fillStyle = r() < 0.5 ? 'rgba(35,50,65,.35)' : 'rgba(255,255,255,.55)';
+        g.fillRect(r() * s, r() * s, 1.5, 1.5);
+      }
+    }),
+    ice: makePat((g, s) => {
+      const gr = g.createLinearGradient(0, 0, s, s);
+      gr.addColorStop(0, '#d2f3ff'); gr.addColorStop(0.45, '#56bdf0'); gr.addColorStop(1, '#238ac9');
+      g.fillStyle = gr; g.fillRect(0, 0, s, s);
+      g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 3.2;
+      for (let k = -2; k < 4; k++) { g.beginPath(); g.moveTo(k * 48, s); g.lineTo(k * 48 + s, 0); g.stroke(); }
+    })
+  },
+
+  // 3: VOLCANO (Clean charred timber, basalt rock with subtle warm grain, dark obsidian)
+  {
+    wood: makePat((g, s) => {
+      const r = mulberry32(53);
+      g.fillStyle = '#281c1a'; g.fillRect(0, 0, s, s);
+      for (let y = 0; y < s; y += 4 + r() * 5) {
+        g.strokeStyle = r() < 0.5 ? 'rgba(15,8,7,.6)' : 'rgba(230,90,30,.4)';
+        g.lineWidth = 1 + r() * 1.4; g.beginPath(); g.moveTo(0, y);
+        for (let x = 0; x <= s; x += 16) g.lineTo(x, y + Math.sin(x * 0.05 + y) * 1.4);
+        g.stroke();
+      }
+      for (let k = 0; k < 40; k++) {
+        g.fillStyle = r() < 0.4 ? 'rgba(230,95,30,.5)' : 'rgba(12,6,5,.5)';
+        g.fillRect(r() * s, r() * s, 1.5, 1.5);
+      }
+    }),
+    stone: makePat((g, s) => {
+      const r = mulberry32(67);
+      g.fillStyle = '#1e1616'; g.fillRect(0, 0, s, s);
+      for (let k = 0; k < 30; k++) {
+        const x = r() * s, y = r() * s, rr = 5 + r() * 12;
+        g.fillStyle = r() < 0.4 ? 'rgba(200,50,15,.18)' : 'rgba(10,5,5,.4)';
+        g.beginPath(); g.arc(x, y, rr, 0, 6.28); g.fill();
+      }
+      for (let k = 0; k < 5; k++) {
+        let px = r() * s, py = r() * s;
+        g.strokeStyle = r() < 0.5 ? 'rgba(255,100,25,.65)' : 'rgba(255,180,50,.55)';
+        g.lineWidth = 1.2 + r() * 0.6;
+        g.beginPath(); g.moveTo(px, py);
+        for (let j = 0; j < 3; j++) { px += (r() - 0.5) * 26; py += (r() - 0.5) * 26; g.lineTo(px, py); }
+        g.stroke();
+      }
+      for (let k = 0; k < 80; k++) {
+        g.fillStyle = r() < 0.35 ? 'rgba(230,120,30,.45)' : 'rgba(10,5,5,.5)';
+        g.fillRect(r() * s, r() * s, 1.5, 1.5);
+      }
+    }),
+    ice: makePat((g, s) => {
+      const gr = g.createLinearGradient(0, 0, s, s);
+      gr.addColorStop(0, '#42161c'); gr.addColorStop(0.5, '#221226'); gr.addColorStop(1, '#0e0b16');
+      g.fillStyle = gr; g.fillRect(0, 0, s, s);
+      g.strokeStyle = 'rgba(255,120,45,.65)'; g.lineWidth = 2.2;
+      for (let k = -2; k < 4; k++) { g.beginPath(); g.moveTo(k * 48, s); g.lineTo(k * 48 + s, 0); g.stroke(); }
+      g.strokeStyle = 'rgba(255,200,80,.4)'; g.lineWidth = 1.1;
+      for (let k = -2; k < 4; k++) { g.beginPath(); g.moveTo(k * 48 + 14, s); g.lineTo(k * 48 + 14 + s, 0); g.stroke(); }
+    })
+  }
+];
+
+const PAT = THEME_PAT[0];
+const OUTL = THEME_OUTL[0];
+function getOutl(mat) {
+  const tIdx = getThemeIndex();
+  return (THEME_OUTL[tIdx] && THEME_OUTL[tIdx][mat]) || THEME_OUTL[0][mat] || '#4c535b';
+}
+
+const _m = (typeof DOMMatrix !== 'undefined') ? new DOMMatrix() : null;
+function patFor(mat, off) {
+  const tIdx = getThemeIndex();
+  const p = (THEME_PAT[tIdx] && THEME_PAT[tIdx][mat]) || THEME_PAT[0][mat] || THEME_PAT[0].wood;
+  if (_m && p.setTransform) { const s = ppm / PX; p.setTransform(_m.translate(off * 37 % 128, off * 53 % 128).scale(s, s)); }
+  return p;
+}
+
+/* =====================================================================
+   WORLD / GAME STATE
+   ===================================================================== */
+let world = null, ents = [], terrain = [], parts = [], pops = [], trail = [], lastTrail = [], trailKind = 'rock', lastTrailKind = 'rock';
+let ppm = 40, camL = -4, camTarget = -4, groundY = 0, shake = 0, fitsAll = true, userPan = 0;
+const G = {
+  mode: 'menu', state: 'menu', level: 0, levelIdx: 0, theme: THEMES[0], ammo: [], loaded: null, loadT: 1, proj: null, extras: [],
+  score: 0, stars: [0, 0, 0], starsLit: 0, time: 0, stateT: 0, damageOn: false, maxX: 20, maxY: 6, aim: null, pouch: { x: 0, y: REST_Y }, pouchV: { x: 0, y: 0 },
+  sling: [{ x: 0 }], moundH: MOUND_H, arenaW: 34, turn: 0, timeScale: 1, tsTarget: 1, realT: 0, slowEnd: 0, tapTut: null, pred: null, kb: null, pvpLeft: [0, 0], items: 0, rngDeco: 1, paused: false, lastPull: 0, pan: null, tut: false,
+  dailyConfig: null, dailyNewBest: false, dailyReward: 0, dailyDay: '', impactCool: 0
+};
+let acc = 0, queue = { slow: [], expl: [] };
+let lastImpactVibe = 0;
+
+function aliveEnemies(team) { let n = 0; for (const e of ents) if (e.kind === 'enemy' && !e.dead && (team === undefined || e.team === team)) n++; return n; }
+
+/* ---------------- construction kit ---------------- */
+function kit() {
+  const b = {
+    ground(x0, x1, h) {
+      const body = world.createBody({ type: 'static', position: Vec2((x0 + x1) / 2, h / 2) });
+      body.createFixture(pl.Box((x1 - x0) / 2, h / 2), { friction: 0.9 });
+      const t = { kind: 'terrain', x0: x0, x1: x1, h: h, body: body }; body.setUserData(t); terrain.push(t); return h;
+    },
+    box(mat, cx, y0, w, h, ang) {
+      const m = MAT[mat];
+      const body = world.createBody({ type: 'dynamic', position: Vec2(cx, y0 + h / 2), angle: ang || 0 });
+      body.createFixture(pl.Box(w / 2, h / 2), { density: m.density, friction: m.friction, restitution: m.rest });
+      const hp = m.hp * clamp(Math.sqrt((w * h) / 0.54), 0.6, 2.2);
+      const e = { kind: 'block', mat: mat, w: w, h: h, hp: hp, maxHp: hp, body: body, seed: (Math.random() * 1e6) | 0, pts: m.pts };
+      body.setUserData(e); ents.push(e); return y0 + h;
+    },
+    col(mat, x, y0, h, w) { return b.box(mat, x, y0, w || 0.3, h); },
+    beam(mat, x0, x1, y0, h) { return b.box(mat, (x0 + x1) / 2, y0, x1 - x0, h || 0.3); },
+    enemy(x, y0, helmet, r) {
+      r = r || (helmet ? 0.36 : 0.34);
+      const body = world.createBody({ type: 'dynamic', position: Vec2(x, y0 + r), angularDamping: 2.5 });
+      body.createFixture(pl.Circle(r * 0.9), { density: 0.8, friction: 0.7, restitution: 0.2 });
+      // Small overlapping face/ear fixtures keep the soft creature silhouette physical.
+      body.createFixture(pl.Circle(r * 0.34, Vec2(0, -r * 0.34)), { density: 0.8, friction: 0.7, restitution: 0.2 });
+      for (const side of [-1, 1]) body.createFixture(pl.Circle(r * 0.22, Vec2(side * r * 0.62, r * 0.6)), { density: 0.55, friction: 0.65, restitution: 0.15 });
+      const e = { kind: 'enemy', r: r, hp: helmet ? 20 : 6, maxHp: helmet ? 20 : 6, helmet: !!helmet, body: body, blink: Math.random() * 4, team: 0, hurt: 0, bob: Math.random() * 6 };
+      body.setUserData(e); ents.push(e); return y0 + 2 * r;
+    },
+    tnt(x, y0) {
+      const s = 0.7, body = world.createBody({ type: 'dynamic', position: Vec2(x, y0 + s / 2) });
+      body.createFixture(pl.Box(s / 2, s / 2), { density: 0.8, friction: 0.7, restitution: 0.05 });
+      const e = { kind: 'tnt', w: s, h: s, hp: 6, maxHp: 6, body: body }; body.setUserData(e); ents.push(e); return y0 + s;
+    },
+    item(type, x, y0) {
+      const w = type === 'cake' ? 0.62 : 0.5, h = type === 'cake' ? 0.46 : 0.5;
+      const body = world.createBody({ type: 'dynamic', position: Vec2(x, y0 + h / 2) });
+      body.createFixture(pl.Box(w / 2, h / 2), { density: 0.5, friction: 0.7, restitution: 0.1 });
+      const e = { kind: 'item', type: type, w: w, h: h, hp: 3, maxHp: 3, body: body, tw: Math.random() * 6 }; body.setUserData(e); ents.push(e); return y0 + h;
+    },
+    boulder(x, y0, r) {
+      const body = world.createBody({ type: 'dynamic', position: Vec2(x, y0 + r), angularDamping: 0.3 });
+      body.createFixture(pl.Circle(r), { density: 2.2, friction: 0.8, restitution: 0.05 });
+      const hp = 200 * r;
+      const e = { kind: 'block', mat: 'stone', round: true, r: r, w: 2 * r, h: 2 * r, hp: hp, maxHp: hp, body: body, seed: (Math.random() * 1e6) | 0, pts: 400 };
+      body.setUserData(e); ents.push(e); return y0 + 2 * r;
+    },
+    place(what, x, y, width) {
+      if (Array.isArray(what)) { const n = what.length, span = Math.max(0, width - 1.1); what.forEach((w, k) => b.place(w, x - span / 2 + (n > 1 ? (span * k) / (n - 1) : span / 2), y)); return; }
+      if (what === 'e') b.enemy(x, y); else if (what === 'h') b.enemy(x, y, true);
+      else if (what === 'tnt') b.tnt(x, y); else if (what === 'cake' || what === 'gem') b.item(what, x, y);
+    },
+    fort(x, y0, floors, top) {
+      let y = y0;
+      for (const f of floors) {
+        const m = f.mat || 'wood', bm = f.beam || m;
+        b.col(m, x - f.w / 2 + 0.15, y, f.h); b.col(m, x + f.w / 2 - 0.15, y, f.h);
+        if (f.mid && Array.isArray(f.in) && f.in.length > 1) {
+          const n = f.in.length, inner = f.w - 0.3, cell = inner / n;
+          for (let k = 1; k < n; k++) b.col(m, x - inner / 2 + cell * k, y, f.h, 0.24);
+          f.in.forEach((w, k) => b.place(w, x - inner / 2 + cell * (k + 0.5), y));
+        } else if (f.in) b.place(f.in, x, y, f.w - 0.3);
+        y = b.beam(bm, x - f.w / 2, x + f.w / 2, y + f.h);
+      }
+      if (top) b.place(top, x, y, 1);
+      return y;
+    },
+    pyramid(mat, x, y0, n, s, inside) {
+      let k = 0;
+      for (let row = 0; row < n; row++) {
+        const cnt = n - row, x0 = x - ((cnt - 1) * s) / 2;
+        for (let i = 0; i < cnt; i++) {
+          const cx = x0 + i * s;
+          if (row === 0 && inside && i % 2 === 1 && k < inside.length) { b.place(inside[k++], cx, y0); continue; }
+          b.box(mat, cx, y0 + row * s, s * 0.98, s * 0.98);
+        }
+      }
+      return y0 + n * s;
+    },
+    balloonPlat(x, y, w, mat, rope, stuff) {
+      const m = MAT[mat], ph = 0.3, py = y - rope - 0.45;
+      const plat = world.createBody({ type: 'dynamic', position: Vec2(x, py), angularDamping: 1.5 });
+      plat.createFixture(pl.Box(w / 2, ph / 2), { density: m.density, friction: 0.9, restitution: 0.02 });
+      const hp = m.hp * clamp(Math.sqrt((w * ph) / 0.54), 0.6, 2.2);
+      const pe = { kind: 'block', mat: mat, w: w, h: ph, hp: hp, maxHp: hp, body: plat, seed: (Math.random() * 1e6) | 0, pts: m.pts };
+      plat.setUserData(pe); ents.push(pe);
+      const colors = ['#ef4b4b', '#3a8bf5', '#ffcc1f', '#9b59f0', '#35c46a'];
+      for (const s of [-1, 1]) {
+        const bx = x + s * (w / 2 - 0.25);
+        const bal = world.createBody({ type: 'dynamic', position: Vec2(bx, y), gravityScale: 0, linearDamping: 3, angularDamping: 6, fixedRotation: true });
+        bal.createFixture(pl.Circle(0.42), { density: 0.1, friction: 0.2, restitution: 0.3 });
+        const be = { kind: 'balloon', r: 0.42, body: bal, anchor: { x: bx, y: y }, color: colors[(Math.random() * colors.length) | 0], plat: plat, off: s * (w / 2 - 0.25), hp: 1 };
+        bal.setUserData(be); ents.push(be);
+        world.createJoint(pl.RopeJoint({ maxLength: rope, localAnchorA: Vec2(0, -0.42), localAnchorB: Vec2(s * (w / 2 - 0.25), ph / 2), collideConnected: false }, bal, plat));
+      }
+      if (stuff) b.place(stuff, x, py + ph / 2, w - 0.4);
+      return py + ph / 2;
+    }
+  };
+  return b;
+}
+
+/* ---------------- world creation ---------------- */
+function newWorld() {
+  world = new pl.World({ gravity: Vec2(0, -10) });
+  ents = []; terrain = []; parts = []; pops = []; trail = []; lastTrail = []; queue = { slow: [], expl: [] };
+  G.ammoBonusTotal = 0;
+  const g = world.createBody({ type: 'static', position: Vec2(20, -5) });
+  g.createFixture(pl.Box(140, 5), { friction: 0.9 });
+  g.setUserData({ kind: 'ground' });
+  world.on('begin-contact', onBegin);
+  world.on('pre-solve', (c) => {
+    if (c._pass) { c.setEnabled(false); return; }
+    const ea = c.getFixtureA().getBody().getUserData(), eb = c.getFixtureB().getBody().getUserData();
+    if ((ea && ea.dead) || (eb && eb.dead)) c.setEnabled(false);
+  });
+}
+function mound(x, h) {
+  h = h || MOUND_H; G.moundH = h;
+  const body = world.createBody({ type: 'static', position: Vec2(x, h / 2) });
+  body.createFixture(pl.Box(1.3, h / 2), { friction: 0.9 });
+  const t = { kind: 'terrain', x0: x - 1.3, x1: x + 1.3, h: h, body: body, mound: true }; body.setUserData(t); terrain.push(t);
+}
+function computeExtents() {
+  let mx = 10, my = 5;
+  for (const e of ents) {
+    const p = e.body.getPosition(), ext = (e.w || 2 * (e.r || 0.3)) / 2 + 0.3;
+    mx = Math.max(mx, p.x + ext); my = Math.max(my, p.y + (e.h || 2 * (e.r || 0.3)) / 2);
+  }
+  for (const t of terrain) { if (!t.mound) mx = Math.max(mx, t.x1); my = Math.max(my, t.h); }
+  G.maxX = mx; G.maxY = my;
+}
+
+/* =====================================================================
+   CONTACTS & DAMAGE
+   ===================================================================== */
+function slingBonus(mat) { if (G.mode === 'daily' || G.mode === 'pvp') return 1; const s = SLINGS.find((q) => q.id === save.sling) || SLINGS[0]; return (s.bonus && s.bonus[mat]) || 1; }
+function onBegin(c) {
+  const A = c.getFixtureA().getBody(), B = c.getFixtureB().getBody();
+  const ea = A.getUserData(), eb = B.getUserData();
+  if (!ea || !eb) return;
+  const wm = c.getWorldManifold(null); if (!wm || !wm.pointCount) return;
+  const p = wm.points[0], n = wm.normal;
+  const va = A.getLinearVelocityFromWorldPoint(p), vb = B.getLinearVelocityFromWorldPoint(p);
+  const vn = Math.abs((va.x - vb.x) * n.x + (va.y - vb.y) * n.y);
+  if (ea.kind === 'proj') { if (!ea.hit) ea.hit = G.time; }
+  if (eb.kind === 'proj') { if (!eb.hit) eb.hit = G.time; }
+  const projectile = ea.kind === 'proj' ? ea : eb.kind === 'proj' ? eb : null;
+  const target = projectile === ea ? eb : projectile === eb ? ea : null;
+  if (projectile && target && target.body) {
+    if (!projectile.hitCache) projectile.hitCache = new WeakMap();
+    const prev = projectile.hitCache.get(target);
+    if (prev !== undefined && G.time - prev < 0.1) return;
+    projectile.hitCache.set(target, G.time);
+  }
+  if (ea.kind === 'balloon' || eb.kind === 'balloon') {
+    const bal = ea.kind === 'balloon' ? ea : eb, other = bal === ea ? eb : ea;
+    if (G.damageOn && (other.kind === 'proj' || vn > 1.2) && other.body !== bal.plat) bal.dead = true;
+    return;
+  }
+  if (vn < 1.0 || !G.damageOn) return;
+  shake = Math.max(shake, clamp(vn * 0.32, 1.5, 10));
+  const mA = A.isDynamic() ? A.getMass() : 0, mB = B.isDynamic() ? B.getMass() : 0;
+  const mRed = mA && mB ? (mA * mB) / (mA + mB) : mA || mB;
+  const E = 0.5 * mRed * vn * vn;
+  if (E > 22 && G.realT > G.impactCool && (ea.kind === 'proj' || eb.kind === 'proj' || ea.kind === 'tnt' || eb.kind === 'tnt')) {
+    G.impactCool = G.realT + 0.34;
+    G.tsTarget = 0.62; G.slowEnd = Math.max(G.slowEnd || 0, G.realT + 0.13);
+    if (navigator.vibrate && G.realT - lastImpactVibe > 0.22) { try { navigator.vibrate(E > 85 ? 18 : 9); lastImpactVibe = G.realT; } catch (err) { /* haptics unavailable */ } }
+  }
+  const hpA = ea.hp, hpB = eb.hp;
+  const dA = hitEntity(ea, E, eb, p), dB = hitEntity(eb, E, ea, p);
+  if (eb.kind === 'proj' && ea.kind === 'block' && dA && ea.dead && dA > hpA * 1.3) { c._pass = true; queue.slow.push({ body: B, f: 1 - clamp(mA / (mA + mB), 0, 0.75) * 0.7 }); }
+  if (ea.kind === 'proj' && eb.kind === 'block' && dB && eb.dead && dB > hpB * 1.3) { c._pass = true; queue.slow.push({ body: A, f: 1 - clamp(mB / (mA + mB), 0, 0.75) * 0.7 }); }
+  if (E > 0.15) {
+    const mat = ea.kind === 'block' ? ea.mat : eb.kind === 'block' ? eb.mat : (ea.kind === 'enemy' || eb.kind === 'enemy') ? 'enemy' : null;
+    if (mat) audio.hit(mat, E);
+    if (E > 4) { const col = ea.kind === 'block' ? MAT[ea.mat].chip : eb.kind === 'block' ? MAT[eb.mat].chip : ['#ddd', '#aaa']; for (let k = 0; k < Math.min(6, 1 + E / 10); k++) chip(p.x, p.y, col[(Math.random() * col.length) | 0], 0.6); }
+  }
+}
+function hitEntity(e, E, other, contactPoint) {
+  if (e.dead || e.hp === undefined) return 0;
+  let dmg = 0;
+  if (e.kind === 'block' || e.kind === 'debris') {
+    // Convert impact energy into damage gradually; mass and speed already scale E.
+    dmg = E * 1.12 * MAT[e.mat].resist;
+    if (other.kind === 'proj') dmg *= PROJ[other.type].vs[e.mat] * slingBonus(e.mat);
+    else dmg = E * 0.7 * MAT[e.mat].resist; /* falling beams chip, rather than vaporize, the structure */
+  } else if (e.kind === 'enemy') { dmg = E * 16 * (e.helmet ? 0.55 : 1); if (dmg > 0.8) e.hurt = 0.6; }
+  else if (e.kind === 'tnt' || e.kind === 'item') dmg = E * 10;
+  else return 0;
+  if (dmg < 0.4) return 0;
+  damageEntity(e, dmg, other, contactPoint || e.body.getPosition());
+  return dmg;
+}
+function damageEntity(e, dmg, other, pos) {
+  if (dmg <= 0 || e.dead) return;
+  if (e.kind === 'enemy') { e.hurt = Math.max(e.hurt || 0, 0.42); e.blink = -0.08; }
+  const appliedDmg = Math.min(dmg, Math.max(0, e.hp));
+  e.hp -= dmg;
+  if (e.kind === 'block') {
+    G.currentBlockHp = Math.max(0, (G.currentBlockHp || 0) - appliedDmg);
+    updateDestructionMeter();
+  }
+  if ((e.kind === 'block' || e.kind === 'debris') && e.maxHp > 0 && e.pts > 0) {
+    const target = Math.round(e.pts * (1 - Math.max(0, e.hp) / e.maxHp));
+    const gain = Math.max(0, Math.min(e.pts, target) - (e.scoreGiven || 0));
+    if (gain) {
+      e.scoreGiven = (e.scoreGiven || 0) + gain;
+      const pop = gain >= Math.max(90, e.pts * 0.13) || e.hp <= 0;
+      addScore(gain, pop && pos ? pos.x : undefined, pop && pos ? pos.y : undefined, '#fff');
+    }
+  }
+  if (e.hp <= 0) { e.breakAt = pos ? { x: pos.x, y: pos.y } : null; killEntity(e); }
+}
+function killEntity(e) {
+  if (e.dead) return;
+  e.dead = true;
+  if (e.kind === 'enemy') {
+    e.deathAge = 0; e.popReady = false;
+    const remaining = aliveEnemies(e.team);
+    if (remaining === 0 && (G.state === 'play' || G.state === 'turnwait')) {
+      G.tsTarget = 0.32;
+      G.slowEnd = Math.max(G.slowEnd || 0, G.realT + 0.75);
+      shake = Math.max(shake, 10);
+      if (navigator.vibrate) { try { navigator.vibrate([28, 45, 32]); } catch (err) {} }
+    }
+  }
+}
+function registerCombo(e, x, y) {
+  if (G.mode !== 'campaign' && G.mode !== 'daily') return;
+  if (G.realT <= (G.comboUntil || 0)) G.comboCount = (G.comboCount || 0) + 1;
+  else G.comboCount = 1;
+  G.comboUntil = G.realT + 1.25;
+  if (G.comboCount >= 2) {
+    const n = G.comboCount, bonus = Math.min(1000, (n - 1) * 200);
+    addScore(bonus, x, y + 0.35, '#ffe36a', true);
+    const titles = ['', '', 'DOUBLE STRIKE!', 'TRIPLE SMASH!', 'DEMOLITION!', 'WRECKING BALL!', 'UNSTOPPABLE!'];
+    const label = n < titles.length ? titles[n] : 'SMASH ×' + n;
+    popText(x, y + 0.95, label, n >= 4 ? '#ff7a3a' : '#ffd44f', true);
+    spark(x, y + 0.5, 8, '#ffd25a');
+  }
+}
+
+/* =====================================================================
+   EFFECTS
+   ===================================================================== */
+function chip(x, y, col, sp) {
+  if (parts.length > 700) return;
+  const a = Math.random() * Math.PI * 2, s = (1 + Math.random() * 4) * (sp || 1);
+  parts.push({ t: 'chip', x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s + 2, life: 0, max: 0.8 + Math.random() * 0.8, c: col, s: 0.06 + Math.random() * 0.12, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 20 });
+}
+function puff(x, y, n, col, size, sp) {
+  for (let k = 0; k < n; k++) {
+    if (parts.length > 700) return;
+    const a = Math.random() * Math.PI * 2, s = Math.random() * (sp || 1.5);
+    parts.push({ t: 'puff', x: x + Math.cos(a) * 0.1, y: y + Math.sin(a) * 0.1, vx: Math.cos(a) * s, vy: Math.sin(a) * s + 0.3, life: 0, max: 0.5 + Math.random() * 0.5, c: col || '#fff', s: (size || 0.3) * (0.7 + Math.random() * 0.6) });
+  }
+}
+function spark(x, y, n, col) {
+  for (let k = 0; k < n; k++) { const a = Math.random() * 6.28, s = 3 + Math.random() * 6; parts.push({ t: 'spark', x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0, max: 0.35 + Math.random() * 0.3, c: col || '#ffe36a', s: 0.06 }); }
+}
+function popText(x, y, text, col, big) { pops.push({ x: x, y: y, text: text, c: col || '#fff', t: 0, big: !!big }); }
+function addScore(n, x, y, col, big) { if (G.mode !== 'campaign' && G.mode !== 'daily') return; G.score += n; if (x !== undefined) popText(x, y, String(n), col, big); updateHUDScore(); }
+
+/* ---------------- explosions ---------------- */
+function explode(x, y, R, power) {
+  audio.boom(); shake = Math.max(shake, 14);
+  parts.push({ t: 'flash', x: x, y: y, life: 0, max: 0.25, s: R * 0.9 });
+  parts.push({ t: 'ring', x: x, y: y, life: 0, max: 0.45, s: R });
+  for (let k = 0; k < 18; k++) { const a = Math.random() * 6.28, s = Math.random() * 3.5; parts.push({ t: 'fire', x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s + 1, life: 0, max: 0.45 + Math.random() * 0.4, s: 0.35 + Math.random() * 0.5 }); }
+  puff(x, y, 14, '#6f6a66', 0.55, 2.4);
+  spark(x, y, 16, '#ffd25a');
+  for (let b = world.getBodyList(); b; b = b.getNext()) {
+    if (!b.isDynamic()) continue;
+    const e = b.getUserData(); if (!e || e.dead) continue;
+    const c = b.getWorldCenter(), dx = c.x - x, dy = c.y - y, d = Math.sqrt(dx * dx + dy * dy);
+    if (d > R) continue;
+    if (!blastVisible(x, y, b)) continue;
+    const f = 1 - d / R, inv = d > 0.05 ? 1 / d : 0, m = b.getMass();
+    const imp = power * f * Math.sqrt(clamp(m, 0.15, 3));
+    b.applyLinearImpulse(Vec2(dx * inv * imp, (dy * inv + 0.35) * imp), c, true);
+    b.applyAngularImpulse((gameRandom() - 0.5) * imp * 0.3, true);
+    if (!G.damageOn) continue;
+    if (e.kind === 'block' || e.kind === 'debris') damageEntity(e, power * 11 * Math.pow(f, 1.35) * MAT[e.mat].resist * slingBonus(e.mat), { kind: 'blast' }, c);
+    else if (e.kind === 'enemy') { if (f > 0.12 || !e.helmet) damageEntity(e, power * 0.72 * Math.pow(f, 1.2) * (e.helmet ? 0.55 : 1), { kind: 'blast' }, c); }
+    else if (e.kind === 'tnt' || e.kind === 'item') { e.hp = 0; e.dead = true; }
+    else if (e.kind === 'balloon') e.dead = true;
+  }
+}
+function blastVisible(x, y, targetBody) {
+  let first = null;
+  const target = targetBody.getWorldCenter();
+  if (Math.hypot(target.x - x, target.y - y) < 0.08) return true;
+  world.rayCast(Vec2(x, y), target, (fixture, point, normal, fraction) => {
+    const body = fixture.getBody();
+    if (body === targetBody) { first = body; return fraction; }
+    const e = body.getUserData();
+    if (!e || e.dead || e.kind === 'proj' || e.kind === 'balloon') return -1;
+    first = body; return 0;
+  });
+  return first === targetBody;
+}
+
+/* ---------------- entity removal ---------------- */
+function removeEntity(e) {
+  if (e.removed) return;
+  e.removed = true;
+  const p = e.body.getPosition(), px = p.x, py = p.y;
+  if (e.kind === 'block') spawnBlockDebris(e);
+  world.destroyBody(e.body);
+  if (e.kind === 'debris') {
+    return;
+  } else if (e.kind === 'block') {
+    const m = MAT[e.mat], n = Math.round(clamp(e.w * e.h * 30, 6, 18));
+    for (let k = 0; k < n; k++) chip(px + (Math.random() - 0.5) * e.w, py + (Math.random() - 0.5) * e.h, m.chip[(Math.random() * 3) | 0], 1);
+    puff(px, py, 3, e.mat === 'ice' ? '#e8f8ff' : e.mat === 'stone' ? '#c9ccd0' : '#e6cfa8', 0.35, 1);
+    audio.brk(e.mat);
+    const rest = Math.max(0, e.pts - (e.scoreGiven || 0)); if (rest) addScore(rest, px, py, '#fff');
+    registerCombo(e, px, py);
+  } else if (e.kind === 'enemy') {
+    const col = e.team === 1 ? '#ff8f8f' : e.team === 2 ? '#8fc0ff' : G.theme === THEMES[2] ? '#c9a6ff' : G.theme === THEMES[1] ? '#ffc07a' : '#9ae66a';
+    puff(px, py, 12, col, 0.45, 2.2); puff(px, py, 5, '#ffffff', 0.35, 1.6); spark(px, py, 8, '#fff');
+    audio.pop(); addScore(1000, px, py + 0.4, col, true); registerCombo(e, px, py + 0.4);
+    if (G.mode === 'pvp') updatePvpHUD();
+  } else if (e.kind === 'tnt') {
+    for (let k = 0; k < 10; k++) chip(px, py, ['#d32f2f', '#8a1c1c', '#f2c14e'][k % 3], 1.6);
+    queue.expl.push({ x: px, y: py, R: 3.4, P: 13 });
+    addScore(500, px, py, '#ffd25a'); registerCombo(e, px, py);
+  } else if (e.kind === 'item') {
+    spark(px, py, 14, e.type === 'gem' ? '#8ff5ff' : '#ffd1e6'); puff(px, py, 5, '#fff', 0.3, 1.5);
+    audio.chime(); G.items += e.type === 'gem' ? 5 : 3;
+    addScore(e.type === 'gem' ? 800 : 1000, px, py + 0.3, e.type === 'gem' ? '#8ff5ff' : '#ff9ccf', true);
+    registerCombo(e, px, py + 0.3);
+  } else if (e.kind === 'balloon') {
+    puff(px, py, 5, e.color, 0.25, 2); audio.balloon(); addScore(150, px, py, '#fff');
+  } else if (e.kind === 'proj') { puff(px, py, 6, '#fff', 0.35, 1.2); }
+}
+function spawnBlockDebris(e) {
+  const parent = e.body, p = parent.getPosition(), angle = parent.getAngle(), v = parent.getLinearVelocity();
+  const live = ents.reduce((n, q) => n + (q.kind === 'debris' && !q.dead && !q.removed ? 1 : 0), 0);
+  let made = 0;
+  if (e.round) {
+    const center = e.breakAt || p, count = Math.min(8, Math.max(0, 72 - live));
+    for (let k = 0; k < count; k++) {
+      const a = (k / count) * Math.PI * 2 + gameRandom() * 0.25, radius = e.r * (0.26 + gameRandom() * 0.13);
+      const local = Vec2(Math.cos(a) * e.r * 0.48, Math.sin(a) * e.r * 0.48), pos = parent.getWorldPoint(local);
+      const body = world.createBody({ type: 'dynamic', position: pos, angularDamping: 0.3 });
+      body.createFixture(pl.Circle(radius), { density: MAT.stone.density * 0.9, friction: 0.78, restitution: 0.1 });
+      const shard = { kind: 'debris', mat: 'stone', round: true, r: radius, w: radius * 2, h: radius * 2, hp: undefined, maxHp: 1, pts: 0, body: body, seed: e.seed + k * 41, age: 0, ttl: 2.6 + gameRandom() };
+      body.setUserData(shard); ents.push(shard);
+      const dx = pos.x - center.x, dy = pos.y - center.y, dl = Math.hypot(dx, dy) || 1, kick = 0.8 + gameRandom() * 1.2;
+      body.setLinearVelocity(Vec2(v.x + dx / dl * kick, v.y + dy / dl * kick + 0.3));
+      body.setAngularVelocity(parent.getAngularVelocity() + (gameRandom() - 0.5) * 9);
+      made++;
+    }
+    return;
+  }
+  const cols = clamp(Math.ceil(e.w / 0.58), 2, 4), rows = clamp(Math.ceil(e.h / 0.48), 2, 3);
+  const cw = e.w / cols, ch = e.h / rows, info = MAT[e.mat];
+  const center = e.breakAt || p;
+  const cap = Math.max(0, Math.min(cols * rows, 72 - live));
+  for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+    if (made >= cap) return;
+    const lw = cw * 0.94, lh = ch * 0.93;
+    const lx = -e.w / 2 + cw * (col + 0.5), ly = -e.h / 2 + ch * (row + 0.5);
+    const pos = parent.getWorldPoint(Vec2(lx, ly));
+    const body = world.createBody({ type: 'dynamic', position: pos, angle: angle, angularDamping: 0.35 });
+    body.createFixture(pl.Box(lw / 2, lh / 2), { density: info.density * 0.92, friction: info.friction * 0.9, restitution: 0.08 });
+    const shard = { kind: 'debris', mat: e.mat, w: lw, h: lh, hp: undefined, maxHp: 1, pts: 0, body: body, seed: e.seed + row * 17 + col * 31, age: 0, ttl: 2.4 + gameRandom() * 1.2 };
+    body.setUserData(shard); ents.push(shard);
+    const dx = pos.x - center.x, dy = pos.y - center.y, dl = Math.hypot(dx, dy) || 1;
+    const kick = 0.7 + gameRandom() * 1.15;
+    body.setLinearVelocity(Vec2(v.x + dx / dl * kick, v.y + dy / dl * kick + 0.35));
+    body.setAngularVelocity(parent.getAngularVelocity() + (gameRandom() - 0.5) * 7);
+    made++;
+  }
+}
+function processDeaths() {
+  const ready = (e) => e.dead && !e.removed && (e.kind !== 'enemy' || e.popReady);
+  let guard = 0;
+  do {
+    for (const e of ents) if (ready(e)) removeEntity(e);
+    const ex = queue.expl; queue.expl = [];
+    for (const x of ex) explode(x.x, x.y, x.R, x.P);
+    guard++;
+  } while ((queue.expl.length || ents.some(ready)) && guard < 8);
+  ents = ents.filter((e) => !e.removed);
+}
+
+/* =====================================================================
+   PHYSICS STEP
+   ===================================================================== */
+function physicsStep() {
+  for (const e of ents) {
+    if (e.kind === 'balloon' && !e.dead) {
+      const p = e.body.getPosition();
+      e.body.applyForceToCenter(Vec2((e.anchor.x - p.x) * 70, (e.anchor.y - p.y) * 110 + 12 + Math.sin(G.time * 2 + e.anchor.x) * 0.6), true);
+    } else if (e.kind === 'proj' && e.boost > 0) {
+      e.boost -= STEP;
+      e.body.setLinearVelocity(Vec2(e.dir.x * 30, e.dir.y * 30));
+      if (e.boost <= 0) e.body.setGravityScale(1);
+    }
+  }
+  world.step(STEP, 8, 3);
+  for (const s of queue.slow) { const v = s.body.getLinearVelocity(); s.body.setLinearVelocity(Vec2(v.x * s.f, v.y * s.f)); }
+  queue.slow.length = 0;
+  for (const e of ents) {
+    if (e.removed) continue;
+    if (e.kind === 'enemy' && e.dead && !e.popReady) {
+      e.deathAge = (e.deathAge || 0) + STEP;
+      if (e.deathAge >= 0.28) e.popReady = true;
+      if (!e.popReady) continue;
+    }
+    if (e.dead) continue;
+    if (e.kind === 'debris') {
+      e.age += STEP;
+      const v = e.body.getLinearVelocity();
+      if (e.age > e.ttl || (e.age > 1.7 && v.x * v.x + v.y * v.y < 0.025 && Math.abs(e.body.getAngularVelocity()) < 0.16)) e.dead = true;
+    }
+    // Every shot settles and despawns on its own now (not just the one G.proj is
+    // currently tracking), which is what lets the player fire again immediately
+    // instead of waiting for the previous shot to finish resolving.
+    if (e.kind === 'proj' && projDone(e, STEP)) {
+      e.doneT = (e.doneT || 0) + STEP;
+      if (e.doneT > 0.5) e.dead = true;
+    }
+    const p = e.body.getPosition();
+    if (p.y < -6 || p.x < -30 || p.x > G.maxX + 40) { if (e.kind === 'enemy' || e.kind === 'tnt' || e.kind === 'item' || e.kind === 'block' || e.kind === 'debris') killEntity(e); else if (e.kind === 'proj') e.done = true; }
+    if (e.kind === 'proj' && e.type === 'bomb' && !e.used && e.hit && G.time - e.hit > 1.3) triggerAbility(e);
+  }
+  processDeaths();
+}
+// Runs the pre-level physics warmup, then forces every body to a dead stop.
+// Without this, a fort that hasn't fully settled in `steps` ticks keeps
+// visibly drifting/jittering into place after the player can already see
+// and shoot at it, which reads as the structure being "broken" or "vague".
+function settleWorld(steps) {
+  G.damageOn = false;
+  for (let k = 0; k < steps; k++) physicsStep();
+  for (let bd = world.getBodyList(); bd; bd = bd.getNext()) {
+    if (!bd.isDynamic()) continue;
+    bd.setLinearVelocity(Vec2(0, 0));
+    bd.setAngularVelocity(0);
+  }
+  parts = [];
+  pops = [];
+  queue.slow = [];
+  queue.expl = [];
+  for (const e of ents) {
+    if (e.maxHp) e.hp = e.maxHp;
+    if (e.hurt) e.hurt = 0;
+    if (e.scoreGiven) e.scoreGiven = 0;
+  }
+}
+
+/* =====================================================================
+   SLINGSHOT, SHOTS & ABILITIES
+   ===================================================================== */
+function restPos(side) { const x = side === 1 ? G.arenaW : 0; return { x: x, y: G.moundH + REST_Y - MOUND_H }; }
+function curSide() { return G.mode === 'pvp' ? G.turn : 0; }
+function launch() {
+  if (!G.loaded) { G.aim = null; return; }
+  const side = curSide(), R = restPos(side), d = { x: G.pouch.x - R.x, y: G.pouch.y - R.y };
+  const len = Math.hypot(d.x, d.y);
+  if (len < 0.35) { G.aim = null; return; }
+  const type = G.loaded, P = PROJ[type];
+  const v = { x: -d.x * LAUNCH_K, y: -d.y * LAUNCH_K };
+  const body = world.createBody({ type: 'dynamic', position: Vec2(G.pouch.x, G.pouch.y), angle: type === 'missile' ? Math.atan2(v.y, v.x) : 0, bullet: true, fixedRotation: type === 'missile', angularDamping: type === 'shuriken' ? 0.08 : 0.3 });
+  if (type === 'shuriken') {
+    body.createFixture(pl.Circle(P.r * 0.23), { density: P.density * 2.8, friction: 0.24, restitution: 0.08 });
+    // Four convex steel blades on one spinning body give the shuriken a true cutting silhouette.
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 2, c = Math.cos(a), s = Math.sin(a);
+      const shape = pl.Polygon([[0.045,-0.043],[0.19,-0.071],[0.32,0],[0.19,0.071],[0.045,0.043]].map((p) => Vec2(p[0]*c-p[1]*s,p[0]*s+p[1]*c)));
+      body.createFixture(shape, { density: P.density * 3.0, friction: 0.22, restitution: 0.12 });
+    }
+  } else if (type === 'missile') {
+    const L = P.r * 2.6, r = P.r;
+    body.createFixture(pl.Box(L * 0.27, r * 0.34, Vec2(-L * 0.04, 0)), { density: P.density, friction: 0.45, restitution: P.rest });
+    body.createFixture(pl.Polygon([Vec2(L*.18,-r*.33),Vec2(L*.52,0),Vec2(L*.18,r*.33)]), { density: P.density * 0.65, friction: 0.42, restitution: P.rest });
+    body.createFixture(pl.Polygon([Vec2(-L*.2,r*.24),Vec2(-L*.58,r*.7),Vec2(-L*.34,r*.2)]), { density: P.density * 0.4, friction: 0.45, restitution: P.rest });
+    body.createFixture(pl.Polygon([Vec2(-L*.2,-r*.24),Vec2(-L*.34,-r*.2),Vec2(-L*.58,-r*.7)]), { density: P.density * 0.4, friction: 0.45, restitution: P.rest });
+  } else body.createFixture(pl.Circle(P.r), { density: P.density, friction: 0.6, restitution: P.rest });
+  body.setLinearVelocity(Vec2(v.x, v.y));
+  body.setAngularVelocity(type === 'shuriken' ? -18 : type === 'missile' ? 0 : -v.x * 0.6);
+  const e = { kind: 'proj', type: type, r: P.r, body: body, t: 0, used: type === 'rock', done: false, hit: 0, still: 0, boost: 0, dir: null };
+  body.setUserData(e); ents.push(e);
+  // The previous shot (if still flying/settling) is left to clean itself up generically
+  // in physicsStep — it no longer has to finish before the player can fire again.
+  G.proj = e; G.extras = []; G.loaded = null; G.aim = null; userPan = 0; G.afterShot = 0;
+  lastTrail = trail; lastTrailKind = trailKind; trail = []; trailKind = type;
+  G.pouchV = { x: -d.x * 22, y: -d.y * 22 };
+  G.shots = (G.shots || 0) + 1;
+  audio.launch();
+  if (G.tut) { G.tut = false; $('hand').style.opacity = '0'; }
+  const hint = P.hint; if (hint) showHint(hint); else showHint('');
+}
+function triggerAbility(e) {
 
 })();
