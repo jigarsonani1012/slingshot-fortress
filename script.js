@@ -2298,5 +2298,505 @@ function drawParts() {
     if (p.t === 'chip') { ctx.save(); ctx.translate(sx, sy); ctx.rotate(p.rot); ctx.globalAlpha = 1 - Math.max(0, u - 0.7) / 0.3; ctx.fillStyle = p.c; const s = p.s * ppm; ctx.fillRect(-s, -s * 0.6, s * 2, s * 1.2); ctx.restore(); }
     else if (p.t === 'puff') { ctx.globalAlpha = (1 - u) * 0.9; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(sx, sy, p.s * ppm * (0.6 + u * 1.2), 0, 6.28); ctx.fill(); }
     else if (p.t === 'fire') { ctx.globalAlpha = 1 - u; ctx.fillStyle = u < 0.3 ? '#fff3b0' : u < 0.6 ? '#ffb03a' : '#e2552a'; ctx.beginPath(); ctx.arc(sx, sy, p.s * ppm * (0.5 + u), 0, 6.28); ctx.fill(); }
+    else if (p.t === 'spark') { ctx.globalAlpha = 1 - u; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(sx, sy, Math.max(1.5, ppm * p.s), 0, 6.28); ctx.fill(); }
+    else if (p.t === 'flash') { ctx.globalAlpha = 1 - u; const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, p.s * ppm * 1.4); g.addColorStop(0, 'rgba(255,255,220,1)'); g.addColorStop(0.4, 'rgba(255,200,90,.8)'); g.addColorStop(1, 'rgba(255,150,50,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, p.s * ppm * 1.4, 0, 6.28); ctx.fill(); }
+    else if (p.t === 'ring') { ctx.globalAlpha = (1 - u) * 0.8; ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, ppm * 0.12 * (1 - u)); ctx.beginPath(); ctx.arc(sx, sy, p.s * ppm * (0.3 + u * 0.9), 0, 6.28); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const q of pops) {
+    const [sx, sy] = w2s(q.x, q.y + q.t * 1.1), u = q.t / 1.1, s = q.big ? ppm * 0.62 : ppm * 0.42;
+    const sc = q.t < 0.15 ? q.t / 0.15 * 1.2 : 1;
+    ctx.globalAlpha = u > 0.7 ? (1 - u) / 0.3 : 1;
+    ctx.font = Math.max(11, s * sc) + 'px Lilita One, sans-serif';
+    ctx.lineWidth = Math.max(2, s * 0.18); ctx.strokeStyle = '#3a2410'; ctx.strokeText(q.text, sx, sy); ctx.fillStyle = q.c; ctx.fillText(q.text, sx, sy);
+    ctx.globalAlpha = 1;
+  }
+}
+function drawSnow(dt) {
+  if (!bg.snow.length) return;
+  const isVolcano = G.theme.name === 'VOLCANO';
+  for (const f of bg.snow) {
+    if (isVolcano) {
+      f.y -= f.v * dt * 0.7; if (f.y < 0) f.y += 1;
+      f.ph += dt;
+      const x = ((f.x * W + Math.sin(f.ph * 1.6) * 12 - camL * ppm * 0.2) % W + W) % W;
+      const py = f.y * H;
+      const rad = Math.max(1, f.s * 0.9);
+      
+      // Gentle warm ember spark
+      ctx.fillStyle = 'rgba(255, 140, 30, 0.45)';
+      ctx.beginPath(); ctx.arc(x, py, rad * 1.8, 0, 6.28); ctx.fill();
+      ctx.fillStyle = '#ffe082';
+      ctx.beginPath(); ctx.arc(x, py, rad * 0.8, 0, 6.28); ctx.fill();
+    } else {
+      f.y += f.v * dt; if (f.y > 1) f.y -= 1;
+      f.ph += dt;
+      const x = ((f.x * W + Math.sin(f.ph) * 12 - camL * ppm * 0.3) % W + W) % W;
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      ctx.beginPath(); ctx.arc(x, f.y * H, f.s, 0, 6.28); ctx.fill();
+    }
+  }
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+function drawEnemyRadar() {
+  if (G.mode !== 'campaign' && G.mode !== 'daily') return;
+  const [leftEdge, rightEdge] = [camL, camL + viewW()];
+  for (const e of ents) {
+    if (e.removed || e.dead || e.kind !== 'enemy') continue;
+    const p = e.body.getPosition();
+    if (p.x < leftEdge - 0.5 || p.x > rightEdge + 0.5) {
+      const isRight = p.x > rightEdge;
+      const x = isRight ? W - 24 : 24;
+      const [_, rawY] = w2s(p.x, p.y);
+      const y = clamp(rawY, 70, H - 65);
+      const bob = Math.sin(G.realT * 6) * 3;
+      ctx.save();
+      ctx.translate(x, y + bob);
+      ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 6;
+      ctx.fillStyle = '#ef4444'; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(0, 0, 13, 0, 6.28); ctx.fill(); ctx.stroke();
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff'; ctx.beginPath();
+      if (isRight) { ctx.moveTo(5, 0); ctx.lineTo(-3, -4.5); ctx.lineTo(-3, 4.5); }
+      else { ctx.moveTo(-5, 0); ctx.lineTo(3, -4.5); ctx.lineTo(3, 4.5); }
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+function render(dt) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  let ox = 0, oy = 0;
+  if (shake > 0.2) { ox = (Math.random() - 0.5) * shake; oy = (Math.random() - 0.5) * shake; shake *= Math.pow(0.02, dt); } else shake = 0;
+  drawBackground(dt);
+  ctx.save(); ctx.translate(ox, oy);
+  drawGround();
+  for (const t of terrain) drawTerrain(t);
+  drawShadows();
+  drawTrails();
+  const sides = G.mode === 'pvp' ? [0, 1] : [0];
+  for (const s of sides) drawSlingPart(s, 'back');
+  drawQueue();
+  for (const e of ents) {
+    if (e.removed) continue;
+    if (e.kind === 'block' || e.kind === 'debris') drawBlock(e);
+    else if (e.kind === 'tnt') drawTNT(e);
+    else if (e.kind === 'item') drawItem(e, dt);
+    else if (e.kind === 'balloon') drawBalloon(e);
+  }
+  for (const e of ents) if (!e.removed && e.kind === 'enemy') drawEnemy(e, dt);
+  drawLoaded();
+  for (const e of ents) if (!e.removed && e.kind === 'proj') drawProj(e);
+  for (const s of sides) drawSlingPart(s, 'front');
+  drawAbilityRing();
+  drawAim();
+  drawParts();
+  ctx.restore();
+  drawEnemyRadar();
+  drawSnow(dt);
+  if (vig) ctx.drawImage(vig, 0, 0, W, H);
+}
+
+/* =====================================================================
+   HUD
+   ===================================================================== */
+function updateHUDScore() {
+  $('hScore').textContent = G.score.toLocaleString('en-US');
+  const s3 = G.stars[2] || 1;
+  $('hFill').style.width = clamp((G.score / s3) * 100, 0, 100) + '%';
+  let lit = 0; for (let k = 0; k < 3; k++) if (G.score >= G.stars[k]) lit = k + 1;
+  for (let k = 0; k < 3; k++) { const el = $('hs' + (k + 1)); const on = k < lit; if (on && !el.classList.contains('on')) { el.classList.add('on'); audio.star(k); } else if (!on) el.classList.remove('on'); }
+  G.starsLit = aliveEnemies() === 0 ? lit : 0;
+}
+function placeHudStars() { for (let k = 0; k < 3; k++) $('hs' + (k + 1)).style.left = clamp((G.stars[k] / G.stars[2]) * 100, 8, 100) + '%'; }
+const PVP_PIG = '<svg class="pvPig" viewBox="0 0 20 20"><circle cx="10" cy="11" r="7.5" fill="#9be36a" stroke="#2e6b1a" stroke-width="1.4"/><circle cx="7" cy="10" r="1.2" fill="#1d2a12"/><circle cx="13" cy="10" r="1.2" fill="#1d2a12"/><ellipse cx="10" cy="13.5" rx="2.4" ry="1.6" fill="#2e6b1a"/></svg>';
+function pigRow(n) { return PVP_PIG.repeat(n); }
+function updatePvpHUD() {
+  $('pv1').querySelector('.pvLeft').innerHTML = pigRow(aliveEnemies(2));
+  $('pv2').querySelector('.pvLeft').innerHTML = pigRow(aliveEnemies(1));
+  $('pv1').classList.toggle('act', G.turn === 0); $('pv2').classList.toggle('act', G.turn === 1);
+  $('pv1').classList.toggle('hide', G.turn !== 0); $('pv2').classList.toggle('hide', G.turn !== 1);
+}
+const ICON = {};
+function projIcon(type) {
+  if (ICON[type]) return ICON[type];
+  const c = document.createElement('canvas'); c.width = c.height = 96;
+  const saved = ctx; ctx = c.getContext('2d');
+  drawProjShape(type, 48, type === 'bomb' ? 56 : 48, type === 'missile' ? 24 : 30, type === 'missile' ? -0.6 : 0, null);
+  ctx = saved; ICON[type] = c.toDataURL(); return ICON[type];
+}
+function creatureIcon(canvas) {
+  const g = canvas.getContext('2d'), s = canvas.width; g.clearRect(0, 0, s, s);
+  const saved = [ctx, ppm, camL, groundY]; ctx = g; ppm = s * 0.9; camL = 0; groundY = s;
+  drawEnemy({ body: { getPosition: () => ({ x: 0.555, y: 0.47 }), getAngle: () => 0 }, r: 0.36, blink: 1, hurt: 0, bob: 0, helmet: false, team: 0 }, 0);
+  ctx = saved[0]; ppm = saved[1]; camL = saved[2]; groundY = saved[3];
+}
+let lastCreat = -1;
+function updateCreatures() {
+  if (G.mode !== 'campaign' && G.mode !== 'daily') return;
+  const n = aliveEnemies();
+  if (n === lastCreat) return;
+  const el = $('hCreat');
+  $('hCreatN').textContent = '×' + n; el.classList.toggle('zero', n === 0);
+  if (lastCreat >= 0) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  lastCreat = n;
+}
+let trayKey = '';
+function updateTray() {
+  const tray = $('ammoTray');
+  const list = G.mode === 'pvp' ? (G.loaded ? [G.loaded] : []) : (G.loaded ? [G.loaded] : []).concat(G.ammo);
+  const key = G.mode + '|' + (G.loaded || '-') + '|' + list.join(',');
+  if (key === trayKey) return; trayKey = key;
+  tray.classList.toggle('hide', !list.length || G.mode === 'menu');
+  tray.innerHTML = '<span class="lbl">SHOTS</span>' + list.map((t, i) => `<div class="am${i === 0 && G.loaded ? ' cur' : ''}${t !== 'rock' ? ' sp' : ''}" data-idx="${i}" title="${i === 0 ? 'Ready in slingshot' : 'Click to load into slingshot'}"><img src="${projIcon(t)}" alt="${PROJ[t].name}"></div>`).join('');
+  tray.querySelectorAll('.am').forEach((el) => {
+    el.onclick = (ev) => {
+      ev.stopPropagation();
+      const idx = parseInt(el.dataset.idx, 10);
+      if (idx > 0) swapAmmo(idx - 1);
+    };
+  });
+}
+function swapAmmo(queueIdx) {
+  if (G.state !== 'play' || G.aim || !G.loaded) return;
+  if (queueIdx < 0 || queueIdx >= G.ammo.length) return;
+  const prev = G.loaded;
+  G.loaded = G.ammo[queueIdx];
+  G.ammo[queueIdx] = prev;
+  G.loadT = 0;
+  audio.load();
+  trayKey = '';
+  updateTray();
+  const P = PROJ[G.loaded];
+  if (P.hint) showHint(P.name + ' READY · ' + P.hint);
+  else showHint(P.name + ' READY');
+}
+function abilityProj() { const p = G.proj; return p && !p.used && !p.done && !p.removed && !p.dead && PROJ[p.type].hint ? p : null; }
+let abType = '';
+function updateAbilityBtn() {
+  const p = G.state === 'play' ? abilityProj() : null, b = $('abilityBtn');
+  if (!p) { b.classList.remove('on'); return; }
+  if (abType !== p.type) { abType = p.type; $('abImg').src = projIcon(p.type); $('abTxt').textContent = p.type === 'bomb' ? 'BOOM!' : p.type === 'shuriken' ? 'SPLIT!' : 'BOOST!'; }
+  b.classList.add('on');
+}
+function showObjective() {
+  const n = aliveEnemies(), L = G.mode === 'daily' ? G.dailyConfig : getLevel(G.levelIdx);
+  creatureIcon($('objIcon'));
+  $('objN').textContent = n + (n === 1 ? ' CREATURE' : ' CREATURES');
+  const specials = [...new Set((L.ammo || []).filter((t) => t !== 'rock'))].map((t) => PROJ[t].name);
+  $('objective').querySelector('.o1').textContent = G.mode === 'daily' ? 'SHARED DAILY CHALLENGE' : 'DEFEAT ALL';
+  $('objSub').textContent = G.mode === 'daily' ? 'Best score wins · replay to improve' : G.levelIdx === 0 ? 'Drag the loaded stone back · release to shoot' : (L.ammo ? L.ammo.length : 3) + ' shots' + (specials.length ? ' · ' + specials.join(', ') : '');
+  const o = $('objective'); o.classList.remove('show'); void o.offsetWidth; o.classList.add('show');
+}
+let hintTimer = 0;
+function showHint(t) { const h = $('hint'); if (!t) { h.classList.remove('on'); return; } h.textContent = t; h.classList.add('on'); clearTimeout(hintTimer); hintTimer = setTimeout(() => h.classList.remove('on'), 3200); }
+function banner(t) { const b = $('banner'); b.textContent = t; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); }
+
+/* =====================================================================
+   SCREENS
+   ===================================================================== */
+const SCREENS = ['title', 'levels', 'daily', 'shop', 'pause', 'win', 'fail', 'card', 'pvpWin', 'guideModal'];
+function show(id) { for (const s of SCREENS) $(s).classList.toggle('hide', s !== id); }
+function hideAll() { for (const s of SCREENS) $(s).classList.add('hide'); }
+let fading = false;
+function transition(fn) { if (fading) return; fading = true; const f = $('fade'); f.classList.add('on'); setTimeout(() => { fn(); requestAnimationFrame(() => { f.classList.remove('on'); fading = false; }); }, 260); }
+function syncSoundIcons() { $('bSoundT').innerHTML = save.sound ? I.soundOn : I.soundOff; $('togSound').classList.toggle('on', save.sound); $('bMusicT').innerHTML = save.music ? I.musicOn : I.musicOff; $('togMusic').classList.toggle('on', save.music); }
+function nextLevelToPlay() {
+  const maxAvail = Math.max(1, save.unlocked || 1);
+  for (let i = 0; i < maxAvail; i++) if (!save.stars[i] && !(save.skipped && save.skipped[i])) return i;
+  return maxAvail - 1;
+}
+function totalStars() { let n = 0; for (const k in save.stars) n += save.stars[k]; return n; }
+function utcDay() { return new Date().toISOString().slice(0, 10); }
+function dayNumber(key) { return Math.floor(Date.parse(key + 'T00:00:00Z') / 86400000); }
+function stringSeed(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function dailyRecord(date) {
+  date = date || utcDay();
+  const d = save.daily;
+  if (d.date !== date) return { date: date, best: 0, stars: 0, claimed: false, total: d.total || 0, lastClear: d.lastClear || '' };
+  return d;
+}
+function dailyWorldIndex(date) { return dayNumber(date) % THEMES.length; }
+function dailyRewardFor(stars, items) { return 25 + stars * 12 + Math.min(20, Math.max(0, items) * 2); }
+function updateDailyPreview() {
+  const d = dailyRecord(), w = dailyWorldIndex(d.date), theme = THEMES[w], c = $('dailyArt'), g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
+  const sky = g.createLinearGradient(0, 0, 0, c.height); sky.addColorStop(0, theme.sky[0]); sky.addColorStop(0.72, theme.sky[1]); g.fillStyle = sky; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = theme.mid; g.beginPath(); g.ellipse(315, 240, 380, 90, 0, Math.PI, Math.PI * 2); g.fill();
+  g.fillStyle = theme.grass; g.fillRect(0, 190, 600, 70); g.fillStyle = theme.dirt; g.fillRect(0, 208, 600, 52);
+  const r = mulberry32(stringSeed(d.date)), count = 2 + (dayNumber(d.date) % 3), center = 365;
+  g.fillStyle = '#75451f'; g.strokeStyle = '#4c2b14'; g.lineWidth = 3;
+  for (let i = 0; i < count; i++) {
+    const x = center - 93 + i * (186 / Math.max(1, count - 1)), h = 48 + r() * 25;
+    g.fillRect(x - 10, 189 - h, 20, h); g.strokeRect(x - 10, 189 - h, 20, h);
+  }
+  g.fillStyle = '#c98a4b'; g.fillRect(center - 130, 155, 260, 17); g.strokeRect(center - 130, 155, 260, 17);
+  g.fillStyle = '#b6ef72';
+  for (let i = 0; i < count; i++) { const x = center - 88 + i * (176 / Math.max(1, count - 1)); g.beginPath(); g.arc(x, 139, 12, 0, 6.28); g.fill(); g.strokeStyle = '#3a6c22'; g.stroke(); g.fillStyle = '#fff'; g.beginPath(); g.arc(x - 4, 136, 3, 0, 6.28); g.arc(x + 4, 136, 3, 0, 6.28); g.fill(); g.fillStyle = '#b6ef72'; }
+  g.strokeStyle = '#75451f'; g.lineWidth = 8; g.lineCap = 'round'; g.beginPath(); g.moveTo(68, 203); g.lineTo(68, 130); g.lineTo(94, 203); g.stroke();
+  g.strokeStyle = '#7b2118'; g.lineWidth = 3; g.beginPath(); g.moveTo(68, 133); g.lineTo(81, 185); g.stroke();
+  $('dailyTitle').textContent = d.date === utcDay() ? 'TODAY · ' + theme.name + ' FORTRESS' : theme.name + ' FORTRESS';
+  const config = makeDailyConfig(d.date);
+  $('dailyRule').textContent = config.title + ' · ' + config.enemies + ' hidden creatures · ' + config.ammo.length + ' shots · one shared puzzle (UTC day)';
+  $('dailyStatus').textContent = d.best ? 'Best today: ' + d.best.toLocaleString('en-US') : 'Best today: —';
+  $('dailyClaim').textContent = d.claimed ? '✓ TODAY’S REWARD CLAIMED' : 'First clear today earns ' + dailyRewardFor(3, 0) + '–' + dailyRewardFor(3, 5) + ' coins';
+  $('dailyNote').textContent = (d.total || 0) + ' daily fortresses cleared · all ammo is loaned for a fair shared challenge';
+  [...$('dailyStars').children].forEach((el, i) => { el.classList.toggle('on', i < d.stars); el.innerHTML = STAR; });
+  $('bDailyStart').textContent = d.claimed ? 'REPLAY TODAY' : 'PLAY TODAY';
+  $('bDailySub').textContent = d.stars ? 'TODAY · ' + d.stars + ' / 3 STARS' : 'TODAY’S SHARED FORTRESS';
+}
+function makeDailyConfig(date) {
+  const day = dayNumber(date), seed = stringSeed('slingshot-daily-' + date), rng = mulberry32(seed);
+  const difficulty = 1 + ((day % 3) + 3) % 3, enemies = 2 + difficulty;
+  // Every player gets the same daily loadout regardless of campaign unlocks.
+  const ammo = difficulty === 1 ? ['rock', 'rock', 'rock'] : difficulty === 2 ? ['rock', 'bomb', 'rock', 'rock'] : ['rock', 'bomb', 'missile', 'rock'];
+  return { date: date, day: day, seed: seed, rng: rng, difficulty: difficulty, enemies: enemies, themeIndex: dailyWorldIndex(date), ammo: ammo, title: ['BASIC AIM', 'CHAIN REACTION', 'FORTRESS BREAKER'][difficulty - 1] };
+}
+function buildDailyWorld(cfg) {
+  gameplayRng = mulberry32((cfg.seed ^ 0x51ed270b) >>> 0);
+  newWorld();
+  G.comboCount = 0; G.comboUntil = 0;
+  G.proj = null; G.extras = []; G.aim = null; G.loaded = null; G.afterShot = 0; G.doneT = 0;
+  G.score = 0; G.items = 0; G.shots = 0; G.time = 0; G.damageOn = false; G.stateT = 0; userPan = 0;
+  G.dailyConfig = cfg; G.dailyDay = cfg.date;
+  G.theme = THEMES[cfg.themeIndex]; buildBackground(G.theme, cfg.seed);
+  mound(0);
+  const b = kit(), r = cfg.rng, d = cfg.difficulty, mat0 = cfg.themeIndex === 2 ? 'ice' : cfg.themeIndex === 1 ? 'stone' : 'wood';
+  const mat1 = cfg.themeIndex === 2 ? 'stone' : cfg.themeIndex === 1 ? 'wood' : 'ice';
+  const center = 16.3 + r() * 1.5;
+  const mainW = 3.6 + r() * 1.2;
+  let leftEnemies = cfg.enemies;
+  // A compact, vertically layered fort keeps the shared daily puzzle readable.
+  const lower = leftEnemies > 3 ? ['e', r() < 0.5 ? 'cake' : 'e'] : 'e';
+  leftEnemies -= Array.isArray(lower) ? lower.filter((x) => x === 'e').length : 1;
+  const floors = [{ w: mainW, h: 1.35, in: lower, mid: Array.isArray(lower), mat: mat0, beam: mat0 }];
+  if (d >= 2) {
+    const mid = leftEnemies > 2 ? ['e', 'e'] : leftEnemies > 1 ? ['e', 'gem'] : 'e';
+    leftEnemies -= Array.isArray(mid) ? mid.filter((x) => x === 'e').length : 1;
+    floors.push({ w: mainW * 0.76, h: 1.2, in: mid, mid: Array.isArray(mid), mat: mat1, beam: mat0 });
+  }
+  if (d >= 3) {
+    const upper = leftEnemies > 1 ? ['e', 'tnt'] : leftEnemies > 0 ? 'e' : 'cake';
+    if (Array.isArray(upper)) leftEnemies -= upper.filter((x) => x === 'e').length; else if (upper === 'e') leftEnemies--;
+    floors.push({ w: mainW * 0.54, h: 1.15, in: upper, mid: Array.isArray(upper), mat: mat0, beam: mat1 });
+  }
+  let top = leftEnemies > 0 ? 'e' : (r() < 0.5 ? 'cake' : null);
+  if (leftEnemies > 0) leftEnemies--;
+  b.fort(center, 0, floors, top);
+  if (cfg.enemies >= 4) {
+    const side = center + (r() < 0.5 ? -1 : 1) * (3.2 + r() * 0.6);
+    const sideTop = leftEnemies > 0 ? 'e' : (r() < 0.5 ? 'gem' : null);
+    if (leftEnemies > 0) leftEnemies--;
+    const extra = [{ w: 2.2 + r() * 0.45, h: 1.25, in: leftEnemies > 0 ? 'e' : (r() < 0.4 ? 'tnt' : null), mat: mat1, beam: mat0 }];
+    if (leftEnemies > 0) leftEnemies--;
+    b.fort(side, 0, extra, sideTop);
+  }
+  while (leftEnemies > 0) {
+    const side = center + (r() < 0.5 ? -1 : 1) * (3.1 + r() * 0.35);
+    b.fort(side, 0, [{ w: 2.05, h: 1.2, in: 'e', mat: mat1, beam: mat0 }], leftEnemies > 1 ? 'e' : null);
+    leftEnemies -= Math.min(2, leftEnemies);
+  }
+  if (cfg.day % 4 === 0 && cfg.themeIndex !== 1) {
+    const bx = center + (r() < 0.5 ? -1 : 1) * 4.1;
+    b.balloonPlat(bx, 5.0, 2.4, mat1, 1.4, r() < 0.5 ? 'gem' : 'cake');
+  }
+  if (!ents.some((e) => e.kind === 'item')) b.item(cfg.day % 5 === 0 ? 'gem' : 'cake', center, 3.25);
+  computeExtents();
+  settleWorld(60);
+  G.levelIdx = 0;
+}
+
+function goTitle() {
+  G.mode = 'menu'; G.state = 'menu';
+  buildLevel(0, true);
+  $('hud').classList.add('hide');
+  $('tCoins').textContent = save.coins; syncSoundIcons();
+  const nxt = nextLevelToPlay();
+  if (nxt < 64) {
+    const nw = Math.floor(nxt / 16);
+    const nlv = (nxt % 16) + 1;
+    $('bPlayLv').textContent = THEMES[nw].name + ' · LEVEL ' + nlv;
+  } else {
+    $('bPlayLv').textContent = 'ENDLESS · LEVEL ' + (nxt - 63);
+  }
+  updateDailyPreview();
+  G.tsTarget = 1; G.timeScale = 1; G.tapTut = null;
+  show('title');
+}
+function showDailyBoard() { updateDailyPreview(); show('daily'); }
+let activeWorldTab = 0;
+let activeEndlessPage = 0;
+let lvToastTimer = null;
+function showLvToast(msg) {
+  const t = $('lvToast'); if (!t) return;
+  t.innerHTML = msg;
+  t.classList.remove('hide', 'pop');
+  void t.offsetWidth;
+  t.classList.add('pop');
+  clearTimeout(lvToastTimer);
+  lvToastTimer = setTimeout(() => { t.classList.remove('pop'); t.classList.add('hide'); }, 2800);
+}
+
+function buildLevelSelect() {
+  save.worldChests = save.worldChests || {};
+  if (activeWorldTab < 4) {
+    G.theme = THEMES[activeWorldTab];
+    buildBackground(G.theme, activeWorldTab * 17 + 5);
+    document.body.style.background = G.theme.sky[0];
+  }
+  const tabsWrap = $('worldTabs');
+  const worldNames = ['🌲 FOREST', '🏜️ CANYON', '❄️ TUNDRA', '🌋 VOLCANO', '🏰 ENDLESS'];
+  tabsWrap.innerHTML = worldNames.map((name, idx) => {
+    const isLocked = idx > 0 && idx < 4 && (save.unlocked || 1) <= idx * 16;
+    return `<button class="wtab${idx === activeWorldTab ? ' act' : ''}${isLocked ? ' isLocked' : ''}" data-w="${idx}">${isLocked ? '🔒 ' : ''}${name}</button>`;
+  }).join('');
+  tabsWrap.querySelectorAll('.wtab').forEach((btn) => {
+    btn.onclick = () => {
+      audio.click();
+      const newTab = parseInt(btn.dataset.w, 10);
+      activeWorldTab = newTab;
+      if (newTab < 4) {
+        G.theme = THEMES[newTab];
+        buildBackground(G.theme, newTab * 17 + 5);
+        document.body.style.background = G.theme.sky[0];
+      }
+      buildLevelSelect();
+    };
+  });
+
+  const wrap = $('lvWorlds'); wrap.innerHTML = '';
+  const w = activeWorldTab;
+  const card = document.createElement('div');
+  card.className = 'worldCard w' + w;
+
+  if (w < 4) {
+    let gotStars = 0; for (let i = w * 16; i < w * 16 + 16; i++) gotStars += save.stars[i] || 0;
+    const canClaim = gotStars >= 36 && !save.worldChests[w];
+    const isClaimed = !!save.worldChests[w];
+    const chestLabel = isClaimed ? '✓ 36★ CLAIMED' : canClaim ? '🎁 CLAIM 250 COINS' : `★ 36 CHEST (${gotStars}/36)`;
+    const chestPct = Math.min(100, Math.round((gotStars / 36) * 100));
+
+    const isWorldLocked = w > 0 && (save.unlocked || 1) <= w * 16;
+    const prevRealmName = THEMES[Math.max(0, w - 1)].name;
+    const prevRequiredLv = w * 16;
+    const lvRemaining = Math.max(1, prevRequiredLv - ((save.unlocked || 1) - 1));
+
+    let lockBannerHTML = '';
+    if (isWorldLocked) {
+      lockBannerHTML = `
+        <div class="realmLockBanner">
+          <div class="rlIcon">🔒</div>
+          <div class="rlText">
+            <div class="rlTitle">LOCKED REALM</div>
+            <div class="rlSub">Clear <b>${prevRealmName} Level 16</b> (Level ${prevRequiredLv}) to unlock ${THEMES[w].name}! (<b>${lvRemaining}</b> level${lvRemaining > 1 ? 's' : ''} remaining)</div>
+          </div>
+          <button class="rlJumpBtn" id="bJumpPrevRealm">PLAY ${prevRealmName}</button>
+        </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="worldHeader">
+        <div class="worldTitle">${THEMES[w].name} REALM</div>
+        <div class="worldRight">
+          <div class="worldStarsBadge">★ ${gotStars} / 48</div>
+          <button class="worldChestBtn${isClaimed ? ' claimed' : canClaim ? ' pulse' : ''}" id="bWorldChest">${chestLabel}</button>
+        </div>
+      </div>
+      <div class="chestProgWrap"><div class="chestProgFill${chestPct >= 100 ? ' full' : ''}" style="width:${chestPct}%"></div></div>
+      ${lockBannerHTML}
+      <div class="grid" id="worldGrid"></div>
+    `;
+    const jumpBtn = card.querySelector('#bJumpPrevRealm');
+    if (jumpBtn) {
+      jumpBtn.onclick = () => {
+        audio.click();
+        activeWorldTab = w - 1;
+        G.theme = THEMES[activeWorldTab];
+        buildBackground(G.theme, activeWorldTab * 17 + 5);
+        document.body.style.background = G.theme.sky[0];
+        buildLevelSelect();
+      };
+    }
+    const chestBtn = card.querySelector('#bWorldChest');
+    if (canClaim) {
+      chestBtn.onclick = () => {
+        audio.chime();
+        save.coins += 250;
+        save.worldChests[w] = true;
+        persist();
+        buildLevelSelect();
+      };
+    }
+    const grid = card.querySelector('#worldGrid');
+    for (let i = w * 16; i < w * 16 + 16; i++) {
+      const b = document.createElement('button');
+      const locked = i + 1 > (save.unlocked || 1);
+      const realmLv = (i % 16) + 1;
+      b.className = 'lv' + (locked ? ' lock' : '') + (i + 1 === (save.unlocked || 1) && !save.stars[i] ? ' cur' : '');
+      if (locked) {
+        b.innerHTML = '<span class="lvNum">' + realmLv + '</span><span class="lvLockBadge">' + I.lock + '</span>';
+        b.onclick = () => {
+          audio.tone(130, 0.14, { type: 'triangle', vol: 0.22, to: 80 });
+          audio.noise(0.06, { freq: 400, vol: 0.15 });
+          b.classList.remove('shake');
+          void b.offsetWidth;
+          b.classList.add('shake');
+          if (isWorldLocked) {
+            showLvToast('🔒 Beat ' + prevRealmName + ' Level 16 to unlock ' + THEMES[w].name + '!');
+          } else {
+            showLvToast('🔒 Complete Level ' + (i) + ' to unlock Level ' + (i + 1) + '!');
+          }
+        };
+      } else {
+        const st = save.stars[i] || 0;
+        const skipped = !st && save.skipped && save.skipped[i];
+        b.innerHTML = '<span>' + realmLv + '</span>' + (skipped ? '<span class="skTag">SKIPPED</span>' : '') + '<span class="st">' + [0, 1, 2].map((k) => '<i class="' + (k < st ? 'on' : '') + '">' + STAR + '</i>').join('') + '</span>';
+        b.onclick = () => { audio.init(); audio.click(); transition(() => startLevel(i)); };
+      }
+      grid.appendChild(b);
+    }
+  } else {
+    // Endless Procedural Siege (Infinite scaling in pages of 16)
+    const startEndless = 64;
+    const maxUnlockedEndless = Math.max(1, save.endlessUnlocked || 1);
+    const maxAvailablePage = Math.floor((maxUnlockedEndless - 1) / 16);
+    const maxViewablePage = maxAvailablePage + 1;
+    const comingSoonPage = maxViewablePage + 1;
+
+    if (typeof activeEndlessPage !== 'number' || activeEndlessPage < 0) {
+      activeEndlessPage = maxAvailablePage;
+    }
+    if (activeEndlessPage > comingSoonPage) activeEndlessPage = comingSoonPage;
+
+    const pageStart = startEndless + activeEndlessPage * 16;
+    const pageEnd = pageStart + 16;
+    const displayStartNum = activeEndlessPage * 16 + 1;
+    const displayEndNum = displayStartNum + 15;
+    const isComingSoon = activeEndlessPage >= comingSoonPage;
+
+    const pageDifficulty = 1 + Math.floor((pageStart - 28) / 4);
+    const tierLabel = pageDifficulty <= 1 ? 'STARTING OUT' : pageDifficulty <= 4 ? 'GETTING TOUGH' : pageDifficulty <= 9 ? 'HARD' : pageDifficulty <= 16 ? 'BRUTAL' : 'NIGHTMARE';
+
+    card.innerHTML = `
+      <div class="worldHeader">
+        <div class="worldTitle">ENDLESS SIEGE</div>
+        <div class="worldRight">
+          <div class="worldStarsBadge">LV ${displayStartNum}–${displayEndNum}</div>
+          <div class="worldStarsBadge diffBadge">⚔ ${tierLabel}</div>
+        </div>
+      </div>
+      <div class="endlessBanner">
+        <span class="ebIcon">🏰</span>
+        <span class="ebText">Procedural fortresses with infinite scaling. Each fortress is dynamically architected with unique layouts, aerial platforms & physics challenges!</span>
+      </div>
+      ${isComingSoon
+        ? `<div class="comingSoonCard">
+             <div class="csIcon">🔒</div>
 
 })();
