@@ -2798,5 +2798,505 @@ function buildLevelSelect() {
       ${isComingSoon
         ? `<div class="comingSoonCard">
              <div class="csIcon">🔒</div>
+             <div class="csTitle">COMING SOON</div>
+             <div class="csDesc">Conquer previous fortresses to unlock this chapter! New siege pages unlock as you play.</div>
+           </div>`
+        : `<div class="grid" id="endlessGrid"></div>`}
+      <div class="pageControls">
+        <button class="pageBtn" id="bEndlessPrev"${activeEndlessPage === 0 ? ' disabled' : ''}>◀ PREV</button>
+        <div class="pageIndicator">PAGE ${activeEndlessPage + 1}</div>
+        <button class="pageBtn" id="bEndlessNext"${activeEndlessPage >= comingSoonPage ? ' disabled' : ''}>NEXT ▶</button>
+      </div>
+    `;
+
+    const prevBtn = card.querySelector('#bEndlessPrev');
+    if (prevBtn && activeEndlessPage > 0) {
+      prevBtn.onclick = () => { audio.click(); activeEndlessPage--; buildLevelSelect(); };
+    }
+    const nextBtn = card.querySelector('#bEndlessNext');
+    if (nextBtn) {
+      nextBtn.onclick = () => { audio.click(); activeEndlessPage++; buildLevelSelect(); };
+    }
+
+    if (!isComingSoon) {
+      const grid = card.querySelector('#endlessGrid');
+      for (let i = pageStart; i < pageEnd; i++) {
+        const b = document.createElement('button');
+        const endlessLv = (i - startEndless) + 1;
+        const locked = endlessLv > maxUnlockedEndless;
+        b.className = 'lv' + (locked ? ' lock' : '') + (endlessLv === maxUnlockedEndless && !save.stars[i] ? ' cur' : '');
+        if (locked) {
+          b.innerHTML = '<span class="lvNum">' + endlessLv + '</span><span class="lvLockBadge">' + I.lock + '</span>';
+          b.onclick = () => {
+            audio.tone(130, 0.14, { type: 'triangle', vol: 0.22, to: 80 });
+            audio.noise(0.06, { freq: 400, vol: 0.15 });
+            b.classList.remove('shake');
+            void b.offsetWidth;
+            b.classList.add('shake');
+            showLvToast('🔒 Complete Endless Level ' + (endlessLv - 1) + ' to unlock Level ' + endlessLv + '!');
+          };
+        } else {
+          const st = save.stars[i] || 0;
+          b.innerHTML = '<span>' + endlessLv + '</span><span class="st">' + [0, 1, 2].map((k) => '<i class="' + (k < st ? 'on' : '') + '">' + STAR + '</i>').join('') + '</span>';
+          b.onclick = () => { audio.init(); audio.click(); transition(() => startLevel(i)); };
+        }
+        grid.appendChild(b);
+      }
+    }
+  }
+  wrap.appendChild(card);
+  $('lvStars').textContent = totalStars();
+}
+function drawSlingIcon(canvas, sk) {
+  const g = canvas.getContext('2d'), s = canvas.width; g.clearRect(0, 0, s, s); g.lineCap = 'round';
+  const line = (x0, y0, x1, y1, w, c) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
+  const w = s * 0.11;
+  for (const [a, b, c, d] of [[s * 0.5, s * 0.92, s * 0.5, s * 0.55], [s * 0.5, s * 0.55, s * 0.25, s * 0.18], [s * 0.5, s * 0.55, s * 0.75, s * 0.18]]) { line(a, b, c, d, w + 4, sk.dark); line(a, b, c, d, w, sk.wood); }
+  g.strokeStyle = sk.band; g.lineWidth = s * 0.05; g.beginPath(); g.moveTo(s * 0.25, s * 0.2); g.quadraticCurveTo(s * 0.5, s * 0.42, s * 0.75, s * 0.2); g.stroke();
+}
+const MAT_ICON = {
+  wood: '<svg class="mico" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="9" fill="#c98a4b" stroke="#6b3d17" stroke-width="1.5"/><ellipse cx="12" cy="12" rx="4.5" ry="5" fill="#e6b27a" stroke="#6b3d17" stroke-width="1"/><circle cx="12" cy="12" r="1.6" fill="#8a5328"/></svg>',
+  stone: '<svg class="mico" viewBox="0 0 24 24"><path d="M5 9l4-5h7l3 4-1 8-6 3-6-3z" fill="#9aa4ae" stroke="#4c535b" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 4l2 6M14 8l-2 5" stroke="#5f6770" stroke-width="1" fill="none"/></svg>',
+  ice: '<svg class="mico" viewBox="0 0 24 24" fill="none" stroke="#2f87c4" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5L12 7l2.5-2.5M9.5 19.5L12 17l2.5 2.5"/></svg>'
+};
+function buildShop() {
+  $('shCoins').textContent = save.coins;
+  const list = $('shopList'); list.innerHTML = '';
+  for (const sk of SLINGS) {
+    const owned = save.owned.includes(sk.id), eq = save.sling === sk.id;
+    const it = document.createElement('div'); it.className = 'item' + (eq ? ' eq' : '');
+    const c = document.createElement('canvas'); c.width = c.height = 120; drawSlingIcon(c, sk);
+    it.appendChild(c);
+    const bWood = (sk.bonus && sk.bonus.wood) ? `+${Math.round((sk.bonus.wood - 1) * 100)}%` : 'Base';
+    const bStone = (sk.bonus && sk.bonus.stone) ? `+${Math.round((sk.bonus.stone - 1) * 100)}%` : 'Base';
+    const bIce = (sk.bonus && sk.bonus.ice) ? `+${Math.round((sk.bonus.ice - 1) * 100)}%` : 'Base';
+    it.insertAdjacentHTML('beforeend', `
+      <div class="nm">${sk.name}</div>
+      <div class="ds">${sk.desc}</div>
+      <div style="width:100%;font-size:calc(var(--u)*1.4);color:#6b4221;font-family:var(--font2);font-weight:700;margin-top:calc(var(--u)*.4);line-height:1.4">
+        <div class="mrow">${MAT_ICON.wood} Wood: <b>${bWood}</b></div>
+        <div class="mrow">${MAT_ICON.stone} Stone: <b>${bStone}</b></div>
+        <div class="mrow">${MAT_ICON.ice} Ice: <b>${bIce}</b></div>
+      </div>
+    `);
+    const btn = document.createElement('button');
+    if (eq) { btn.className = 'on'; btn.textContent = 'EQUIPPED'; }
+    else if (owned) { btn.className = 'equip'; btn.textContent = 'EQUIP'; btn.onclick = () => { audio.click(); save.sling = sk.id; persist(); buildShop(); }; }
+    else { btn.className = 'buy'; btn.innerHTML = '<span class="coin">$</span>' + sk.price; btn.disabled = save.coins < sk.price; btn.onclick = () => { if (save.coins < sk.price) return; audio.chime(); save.coins -= sk.price; save.owned.push(sk.id); save.sling = sk.id; persist(); buildShop(); $('tCoins').textContent = save.coins; }; }
+    it.appendChild(btn); list.appendChild(it);
+  }
+}
+
+let activeGuideTab = 'weapons';
+function buildGuide(tab) {
+  activeGuideTab = tab || activeGuideTab;
+  ['Weapons', 'Materials', 'Tactics'].forEach((name) => {
+    const el = $('gtab' + name);
+    if (el) el.classList.toggle('act', name.toLowerCase() === activeGuideTab);
+  });
+  const cont = $('guideContent');
+  if (activeGuideTab === 'weapons') {
+    cont.innerHTML = `
+      <div class="guideCardGrid">
+        <div class="guideCard">
+          <img src="${projIcon('rock')}" alt="Stone">
+          <div class="guideInfo">
+            <b>STONE</b>
+            Solid heavy rock. Excellent for smashing stone blocks, toppling pillars, and direct hits on creatures.
+            <div class="badge">Heavy Blunt Ammo</div>
+          </div>
+        </div>
+        <div class="guideCard">
+          <img src="${projIcon('bomb')}" alt="Bomb">
+          <div class="guideInfo">
+            <b>BOMB</b>
+            High-explosive shell. <b>Tap in mid-air</b> or wait for impact to detonate a wide shockwave that flattens towers!
+            <div class="badge" style="background:#ff933b;color:#fff">Tap Mid-Air: Explode</div>
+          </div>
+        </div>
+        <div class="guideCard">
+          <img src="${projIcon('shuriken')}" alt="Ice Shuriken">
+          <div class="guideInfo">
+            <b>ICE SHURIKEN</b>
+            Aerodynamic star. <b>Tap in mid-air</b> to split into 3 high-speed blades that slice cleanly through Wood and Ice!
+            <div class="badge" style="background:#65cbff;color:#004b73">Tap Mid-Air: Split ×3</div>
+          </div>
+        </div>
+        <div class="guideCard">
+          <img src="${projIcon('missile')}" alt="Missile">
+          <div class="guideInfo">
+            <b>MISSILE</b>
+            Rocket projectile. <b>Tap in mid-air</b> to ignite thrusters, piercing straight forward through heavy obstacles!
+            <div class="badge" style="background:#ff5247;color:#fff">Tap Mid-Air: Boost</div>
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (activeGuideTab === 'materials') {
+    cont.innerHTML = `
+      <div class="guideCardGrid">
+        <div class="guideCard">
+          <div style="width:calc(var(--u)*6.4);height:calc(var(--u)*6.4);background:#c98a4b;border:calc(var(--u)*.3) solid #6b3d17;border-radius:calc(var(--u)*1);display:flex;align-items:center;justify-content:center;font-size:calc(var(--u)*3.2);flex:none">🪵</div>
+          <div class="guideInfo">
+            <b>WOOD</b>
+            Standard building material. Vulnerable to Shurikens, Bombs, and direct high-impact stone hits.
+          </div>
+        </div>
+        <div class="guideCard">
+          <div style="width:calc(var(--u)*6.4);height:calc(var(--u)*6.4);background:#9aa4ae;border:calc(var(--u)*.3) solid #4c535b;border-radius:calc(var(--u)*1);display:flex;align-items:center;justify-content:center;font-size:calc(var(--u)*3.2);flex:none">🪨</div>
+          <div class="guideInfo">
+            <b>STONE</b>
+            Heavy structural blocks. Durable against light strikes. Best broken with Bombs, high-speed stones, or rolling boulders!
+          </div>
+        </div>
+        <div class="guideCard">
+          <div style="width:calc(var(--u)*6.4);height:calc(var(--u)*6.4);background:#bfefff;border:calc(var(--u)*.3) solid #356985;border-radius:calc(var(--u)*1);display:flex;align-items:center;justify-content:center;font-size:calc(var(--u)*3.2);flex:none">❄️</div>
+          <div class="guideInfo">
+            <b>ICE</b>
+            Slippery frozen slabs. Shatters rapidly under Shuriken blades, dropping towers above them!
+          </div>
+        </div>
+        <div class="guideCard">
+          <div style="width:calc(var(--u)*6.4);height:calc(var(--u)*6.4);background:#e8453c;border:calc(var(--u)*.3) solid #5a1510;border-radius:calc(var(--u)*1);display:flex;align-items:center;justify-content:center;font-size:calc(var(--u)*2.8);color:#ffe36a;font-family:var(--font);flex:none">TNT</div>
+          <div class="guideInfo">
+            <b>TNT BARRELS</b>
+            Explosive volatility! A single strike triggers a chain-reaction blast that topples nearby columns and eliminates sheltered creatures.
+          </div>
+        </div>
+        <div class="guideCard">
+          <div style="width:calc(var(--u)*6.4);height:calc(var(--u)*6.4);background:#ff6f6f;border:calc(var(--u)*.3) solid #8a2020;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:calc(var(--u)*3.2);flex:none">🎈</div>
+          <div class="guideInfo">
+            <b>BALLOONS</b>
+            Holds platforms and sniper nests airborne. Pop the balloon with any projectile to send the platform crashing down!
+          </div>
+        </div>
+      </div>
+    `;
+  } else {
+    cont.innerHTML = `
+      <div style="background:#fff;border-radius:calc(var(--u)*1.6);border:calc(var(--u)*.3) solid #d8b88d;padding:calc(var(--u)*1.4);line-height:1.45;color:#5a3717;font-family:var(--font2);font-size:calc(var(--u)*1.7)">
+        <div style="margin-bottom:calc(var(--u)*1)">🎯 <b>Target Foundation Weak Points:</b> Look for the lowest vertical columns holding the most weight. Knocking out the base collapses the entire fortress!</div>
+        <div style="margin-bottom:calc(var(--u)*1)">⭐ <b>Unused Ammo Bonus:</b> Every projectile left in your queue when all enemies are defeated awards a massive <b>+10,000 bonus points</b>! Clear stages in fewer shots for 3 Gold Stars.</div>
+        <div style="margin-bottom:calc(var(--u)*1)">🔄 <b>Tactical Ammo Swapping:</b> Click any projectile waiting in your bottom-left tray to swap it into the slingshot immediately!</div>
+        <div style="margin-bottom:calc(var(--u)*1)">🔍 <b>Inspect Before Firing:</b> Tap the 🔍 Inspect button in the top right to survey the fortress, find hidden TNT barrels, and plan your trajectory.</div>
+      </div>
+    `;
+  }
+}
+
+/* =====================================================================
+   LEVEL FLOW
+   ===================================================================== */
+function buildLevel(idx, menu) {
+  G.dailyConfig = null; G.dailyNewBest = false;
+  gameplayRng = mulberry32((0x6d2b79f5 ^ Math.imul(idx + 1, 0x9e3779b1)) >>> 0);
+  G.comboCount = 0; G.comboUntil = 0;
+  let L = null;
+  for (let attempt = 0; ; attempt++) {
+    procAttempt = attempt;
+    newWorld();
+    L = getLevel(idx);
+    G.theme = THEMES[L.w % THEMES.length]; buildBackground(G.theme, idx * 31 + 7);
+    mound(0);
+    L.build(kit());
+    computeExtents();
+    settleWorld(36);
+    if (!L.procedural) break;
+    pruneUnreachable();
+    if (aliveEnemies() >= 2 || attempt >= 2) break;
+  }
+  G.shotBudget = Math.min(L.ammo.length, Math.max(2, Math.ceil(aliveEnemies() / 2) + 1));
+  G.levelIdx = idx; G.proj = null; G.extras = []; G.aim = null; G.loaded = null; G.pouch = restPos(0);
+  G.score = 0; G.items = 0; G.shots = 0; G.time = 0; G.damageOn = false; G.stateT = 0; userPan = 0; G.bonusScore = 0;
+  G.milestone50 = false; G.milestone85 = false;
+
+  let totalHp = 0;
+  for (const e of ents) {
+    if (e.kind === 'block' && e.hp) totalHp += e.hp;
+  }
+  G.initialBlockHp = Math.max(1, totalHp);
+  G.currentBlockHp = totalHp;
+  updateDestructionMeter();
+
+  if (menu) { fitCamera(true); document.body.style.background = G.theme.sky[0]; }
+}
+function updateDestructionMeter() {
+  if (G.mode !== 'campaign' && G.mode !== 'daily') return;
+  const init = G.initialBlockHp || 1;
+  const current = Math.max(0, G.currentBlockHp || 0);
+  const pct = clamp(Math.round((1 - current / init) * 100), 0, 100);
+  if (pct >= 50 && !G.milestone50) {
+    G.milestone50 = true;
+    popText(G.maxX * 0.5, G.maxY * 0.6 + 1.2, '50% DEMOLISHED!', '#ffe36a', true);
+    audio.bonus();
+  }
+  if (pct >= 85 && !G.milestone85) {
+    G.milestone85 = true;
+    popText(G.maxX * 0.5, G.maxY * 0.6 + 1.5, 'TOTAL DESTRUCTION!', '#ff8a5a', true);
+    audio.bonus();
+  }
+  G.destructPct = pct;
+}
+function starThresholds() {
+  let enemyPts = 0, blockPts = 0;
+  for (const e of ents) { if (e.kind === 'enemy') enemyPts += 1000; else if (e.kind === 'block') blockPts += e.pts; else if (e.kind === 'item') blockPts += 900; }
+  const spec = G.mode === 'daily' && G.dailyConfig ? G.dailyConfig : getLevel(G.levelIdx);
+  const spare = Math.max(0, G.ammo.length - 1);
+  const s1 = enemyPts, s2 = Math.round((enemyPts + blockPts * 0.25 + 1000 * Math.min(1, spare)) / 100) * 100, s3 = Math.round((enemyPts + blockPts * 0.5 + 2000 * Math.min(1, spare)) / 100) * 100;
+  return [s1, Math.max(s1 + 1000, s2), Math.max(s2 + 1500, s3)];
+}
+function setHudLevel(topText, bottomText) {
+  const el = $('hLevel');
+  if (!el) return;
+  if (!bottomText) el.innerHTML = `<span class="hlNum">${topText}</span>`;
+  else el.innerHTML = `<span class="hlWorld">${topText}</span><span class="hlNum">${bottomText}</span>`;
+}
+
+function startLevel(idx) {
+  G.mode = 'campaign';
+  G.dailyConfig = null; G.dailyNewBest = false;
+  buildLevel(idx, false);
+  const spec = getLevel(idx);
+  G.ammo = spec.ammo.slice(0, G.shotBudget);
+  G.stars = starThresholds(); G.starsLit = 0; placeHudStars();
+  if (idx < 64) {
+    const world = Math.floor(idx / 16);
+    const realmLv = (idx % 16) + 1;
+    setHudLevel(THEMES[world].name, 'LEVEL ' + realmLv);
+  } else {
+    setHudLevel('ENDLESS', 'LEVEL ' + (idx - 63));
+  }
+  $('hScoreWrap').classList.remove('hide'); $('hBar').classList.remove('hide'); $('hCreat').classList.remove('hide'); $('hPvp').classList.add('hide');
+  lastCreat = -1; trayKey = ''; creatureIcon($('creatIcon')); updateCreatures();
+  G.tsTarget = 1; G.timeScale = 1; G.slowEnd = 0; G.tapTut = null; G.pred = null;
+  audio.key = [0, 2, -3, -5][spec.w % 4];
+  document.body.style.background = G.theme.sky[0];
+  hideAll(); $('hud').classList.remove('hide');
+  updateHUDScore(); showHint('');
+  fitCamera(true); if (!fitsAll) camL = camFor('end');
+  G.state = 'intro'; G.stateT = 0;
+  const fresh = [...new Set(G.ammo)].find((t) => t !== 'rock' && !save.seen[t]);
+  G.pendingCard = fresh || null;
+  G.tut = idx === 0 && !save.stars[0];
+}
+function startDaily() {
+  const date = utcDay(), cfg = makeDailyConfig(date);
+  const rec = dailyRecord(date); if (rec.date !== save.daily.date) save.daily = rec;
+  G.mode = 'daily'; G.dailyConfig = cfg; G.dailyDay = date; G.dailyNewBest = false;
+  buildDailyWorld(cfg);
+  G.pendingCard = null; G.tut = false;
+  G.ammo = cfg.ammo.slice(); G.score = 0; G.items = 0; G.shots = 0; G.dailyReward = 0;
+  G.stars = starThresholds(); G.starsLit = 0; placeHudStars();
+  setHudLevel('DAILY', 'CHALLENGE');
+  $('hScoreWrap').classList.remove('hide'); $('hBar').classList.remove('hide'); $('hCreat').classList.remove('hide'); $('hPvp').classList.add('hide');
+  lastCreat = -1; trayKey = ''; creatureIcon($('creatIcon')); updateCreatures();
+  G.tsTarget = 1; G.timeScale = 1; G.slowEnd = 0; G.tapTut = null; G.pred = null; G.tut = false;
+  audio.key = [0, 2, -3][cfg.themeIndex];
+  document.body.style.background = G.theme.sky[0]; hideAll(); $('hud').classList.remove('hide');
+  updateHUDScore(); showHint(''); fitCamera(true); if (!fitsAll) camL = camFor('end');
+  G.state = 'intro'; G.stateT = 0;
+  updateDailyPreview();
+}
+function beginPlay() {
+  G.state = 'play'; G.stateT = 0; G.damageOn = true;
+  showObjective();
+  loadNext();
+  if (TUT[G.levelIdx + 1] && G.tut) showHint(TUT[G.levelIdx + 1]);
+}
+function showCard(type) {
+  G.state = 'card';
+  const P = PROJ[type];
+  $('cardName').textContent = P.name; $('cardDesc').textContent = P.desc;
+  const c = $('cardIcon'), g = c.getContext('2d'); g.clearRect(0, 0, 200, 200);
+  const saved = [ctx, ppm]; ctx = g; drawProjShape(type, 100, 100, 58, type === 'missile' ? -0.5 : 0, null); ctx = saved[0];
+  show('card');
+}
+function winLevel() {
+  G.state = 'won';
+  const idx = G.levelIdx, stars = Math.max(1, G.starsLit);
+  let coins = 0, best = G.score, prevBest = 0, prevStars = 0, chapterBonus = 0;
+  $('chapterLine').classList.add('hide'); $('winNewChapter').classList.add('hide'); $('winDaily').classList.add('hide');
+  if (G.mode === 'daily') {
+    const rec = dailyRecord(G.dailyDay); prevBest = rec.best || 0; prevStars = rec.stars || 0;
+    G.dailyNewBest = G.score > prevBest;
+    rec.best = Math.max(prevBest, G.score); rec.stars = Math.max(rec.stars || 0, stars);
+    if (!rec.claimed) {
+      coins = dailyRewardFor(stars, G.items);
+      rec.claimed = true; rec.total = (rec.total || 0) + 1; rec.lastClear = rec.date;
+    }
+    save.daily = rec; best = rec.best;
+    $('winSign').textContent = 'DAILY FORTRESS';
+    $('winDaily').textContent = coins ? 'FIRST CLEAR · TODAY’S REWARD' : G.dailyNewBest ? 'NEW DAILY PERSONAL BEST' : 'FREE REPLAY · NO EXTRA REWARD';
+    $('winDaily').classList.remove('hide');
+    $('winNew').textContent = 'NEW DAILY BEST!';
+  } else {
+    const prev = save.stars[idx] || 0; prevStars = prev; prevBest = save.best[idx] || 0; best = Math.max(prevBest, G.score);
+    delete save.fails[idx];
+    coins = stars * 10 + G.items + (prev === 0 ? 25 : 0);
+    save.stars[idx] = Math.max(prev, stars); save.best[idx] = best;
+    if (save.skipped) delete save.skipped[idx];
+    if (idx >= 64) {
+      const endlessNum = idx - 63;
+      save.endlessUnlocked = Math.max(save.endlessUnlocked || 1, endlessNum + 1);
+    } else {
+      save.unlocked = Math.max(save.unlocked || 1, idx + 2);
+    }
+    const world = Math.floor(idx / 16), isChapterEnd = (idx + 1) % 16 === 0 && idx < 64;
+    const realmLv = (idx % 16) + 1;
+    if (isChapterEnd && !save.chapterRewards[world]) {
+      chapterBonus = 150; coins += chapterBonus; save.chapterRewards[world] = true;
+      $('winNewChapter').textContent = THEMES[world].name + ' REALM CONQUERED · +' + chapterBonus + ' COINS';
+      $('winNewChapter').classList.remove('hide');
+    }
+    $('winSign').textContent = isChapterEnd ? THEMES[world].name + ' COMPLETE!' : idx >= 64 ? 'ENDLESS · LEVEL ' + (idx - 63) : THEMES[world].name + ' · LEVEL ' + realmLv;
+    $('winNew').textContent = 'NEW BEST!';
+    if (isChapterEnd) {
+      const nextWorld = world + 1;
+      $('chapterLine').textContent = nextWorld < THEMES.length ? 'Next Realm: ' + THEMES[nextWorld].name : 'All 4 Realms conquered! Endless Siege Mode Unlocked!';
+      $('chapterLine').classList.remove('hide');
+    }
+  }
+  const recordImproved = prevBest > 0 && G.score > prevBest;
+  save.coins += coins;
+  persist();
+  countUp($('winScore'), G.score, 1000);
+  $('winNew').classList.toggle('hide', !recordImproved);
+  $('winBestBox').classList.toggle('hide', prevBest === 0);
+  $('bWNext').classList.add('pulse');
+  $('winBest').textContent = best.toLocaleString('en-US'); $('winCoins').textContent = '+' + coins;
+  $('bWNext').style.visibility = G.mode === 'campaign' ? 'visible' : 'hidden';
+  $('winSign').textContent = G.mode === 'daily' ? 'DAILY FORTRESS' : $('winSign').textContent;
+  $('bWReplay').style.visibility = 'visible';
+  if (G.mode === 'daily' && !coins) $('bWReplay').classList.add('pulse');
+  else $('bWReplay').classList.remove('pulse');
+  updateDailyPreview();
+  const st = [...$('winStars').children]; st.forEach((s) => { s.className = ''; });
+
+  // Colorful celebration confetti fireworks
+  const cx = G.maxX ? G.maxX * 0.5 : 18;
+  for (let k = 0; k < 45; k++) {
+    const col = ['#ff4b4b', '#3a8bf5', '#ffd23f', '#44d67c', '#b042ff', '#ff84e8'][k % 6];
+    chip(cx + (Math.random() - 0.5) * 8, 2 + Math.random() * 3, col, 2.2);
+  }
+  for (let k = 0; k < 25; k++) {
+    spark(cx + (Math.random() - 0.5) * 6, 3 + Math.random() * 2, 1, '#ffffff');
+  }
+
+  show('win'); audio.win();
+  const shownStars = G.mode === 'daily' ? Math.max(stars, prevStars) : stars;
+  st.forEach((s, k) => setTimeout(() => { s.className = k < shownStars ? 'lit' : 'off'; if (k < shownStars) audio.star(k); }, 500 + k * 350));
+}
+function countUp(el, to, ms) {
+  const t0 = performance.now();
+  const step = (now) => { const u = Math.min(1, (now - t0) / ms), v = Math.round(to * (1 - Math.pow(1 - u, 3))); el.textContent = v.toLocaleString('en-US'); if (u < 1 && G.state === 'won') requestAnimationFrame(step); else el.textContent = to.toLocaleString('en-US'); };
+  requestAnimationFrame(step);
+}
+function failLevel() {
+  G.state = 'failed';
+  const left = aliveEnemies();
+  $('failN').textContent = left; $('failInfo').lastChild.textContent = left === 1 ? ' CREATURE LEFT' : ' CREATURES LEFT';
+  const failKey = G.mode === 'daily' ? 'daily:' + G.dailyDay : String(G.levelIdx);
+  save.fails[failKey] = (save.fails[failKey] || 0) + 1; persist();
+  $('bFSkip').classList.toggle('hide', !(G.mode === 'campaign' && save.fails[failKey] >= 2));
+  const tips = ['Aim for the base of the tower. It is all about that base!', 'Hit TNT crates to start a chain reaction!', 'Pop the balloons to drop what they hold!', 'Tap in mid-air to use a special weapon\'s power!', 'Shurikens slice wood and ice, stones crush stone.'];
+  const contextual = [];
+  if (ents.some((e) => e.kind === 'tnt' && !e.dead)) contextual.push('A TNT crate is still standing. Hit it for a chain reaction.');
+  if (ents.some((e) => e.kind === 'balloon' && !e.dead)) contextual.push('Pop a balloon to drop the platform it is holding up.');
+  if (G.ammo.includes('bomb') || G.loaded === 'bomb') contextual.push('Save the bomb for a packed section. Tap while it flies.');
+  if (G.ammo.includes('shuriken') || G.loaded === 'shuriken') contextual.push('Shurikens cut wood and ice. Tap to split at the right moment.');
+  contextual.push(tips[Math.min(save.fails[failKey] - 1, tips.length - 1)]);
+  $('failTip').textContent = contextual[0];
+  const c = $('failArt'), g = c.getContext('2d'); g.clearRect(0, 0, 220, 150);
+  const saved = [ctx, ppm, camL, groundY]; ctx = g; ppm = 90; camL = 0; groundY = 150;
+  drawEnemy({ body: { getPosition: () => ({ x: 1.22, y: 0.62 }), getAngle: () => 0 }, r: 0.52, blink: 1, hurt: 0, bob: G.time, helmet: false, team: 0 }, 0);
+  ctx = saved[0]; ppm = saved[1]; camL = saved[2]; groundY = saved[3];
+  show('fail'); audio.fail();
+}
+function calm() {
+  for (let b = world.getBodyList(); b; b = b.getNext()) {
+    if (!b.isDynamic() || !b.isAwake()) continue;
+    const e = b.getUserData(); if (!e || e.kind === 'balloon') continue;
+    const v = b.getLinearVelocity(); if (v.x * v.x + v.y * v.y > 0.09 || Math.abs(b.getAngularVelocity()) > 0.4) return false;
+  }
+  return true;
+}
+
+/* ---------------- 2 players ---------------- */
+function pruneArena() {
+  const kept = [];
+  for (const e of ents.filter(x => x.kind === 'enemy')) {
+    const p = e.body.getPosition();
+    const crowded = kept.some(o => Math.hypot(o.body.getPosition().x - p.x, o.body.getPosition().y - p.y) < 1.1);
+    if (p.y < 0 || crowded || !shotClear(e, e.team === 1 ? 1 : 0)) dropEnemy(e);
+    else kept.push(e);
+  }
+}
+function balanceArena() {
+  while (aliveEnemies(2) !== aliveEnemies(1)) {
+    const big = aliveEnemies(2) > aliveEnemies(1) ? 2 : 1;
+    dropEnemy(ents.filter(x => x.kind === 'enemy' && x.team === big).pop());
+  }
+}
+function buildArena() {
+  gameplayRng = Math.random;
+  G.theme = THEMES[(Math.random() * 3) | 0];
+  G.arenaW = 34;
+  for (let attempt = 0; ; attempt++) {
+    newWorld();
+    buildBackground(G.theme, (Math.random() * 1e6) | 0);
+    mound(0, 3.4); mound(G.arenaW, 3.4);
+    const b = kit(), layouts = [
+      (x, dir) => { b.fort(x, 0, [{ w: 2.4, h: 1.3, in: 'e', mat: 'stone', beam: 'wood' }, { w: 2.4, h: 1.2, in: 'e', mat: 'wood' }], 'e'); },
+      (x, dir) => { b.fort(x - dir * 1.3, 0, [{ w: 2, h: 1.3, in: 'e', mat: 'wood' }]); b.fort(x + dir * 1.3, 0, [{ w: 2, h: 1.3, in: 'e', mat: 'ice' }, { w: 2, h: 1.2, in: 'e', mat: 'ice' }]); },
+      (x, dir) => { b.ground(x - 1.8, x + 1.8, 0.9); b.fort(x, 0.9, [{ w: 3.2, h: 1.3, in: ['e', 'e'], mid: true, mat: 'stone' }], 'e'); }
+    ];
+    const pick = (Math.random() * layouts.length) | 0;
+    layouts[pick](9, 1);
+    const n0 = ents.length;
+    layouts[pick](G.arenaW - 9, -1);
+    ents.forEach((e, i) => { if (e.kind === 'enemy') e.team = i < n0 ? 2 : 1; });
+    computeExtents();
+    settleWorld(60);
+    settleWorld(90);
+    pruneArena();
+    addArenaPigs(2, 3);
+    addArenaPigs(1, 3);
+    balanceArena();
+    if ((aliveEnemies(2) >= 3 && aliveEnemies(1) >= 3) || attempt >= 15) break;
+  }
+}
+function addArenaPigs(team, n) {
+  const side = team === 1 ? 1 : 0, half = G.arenaW / 2;
+  for (let k = 0; k < n; k++) {
+    const spots = perchCandidates().structure.filter(c => c.x > 7 && c.x < G.arenaW - 7 && (side ? c.x > half : c.x < half));
+    let placed = false;
+    for (let t = 0; t < 80 && spots.length && !placed; t++) {
+      const c = spots[Math.floor(Math.random() * spots.length)];
+      kit().enemy(c.x, c.y, Math.random() < 0.5);
+      const e = ents[ents.length - 1];
+      e.team = team;
+      const p = e.body.getPosition();
+      const crowded = ents.some(o => o !== e && o.kind === 'enemy' && Math.hypot(o.body.getPosition().x - p.x, o.body.getPosition().y - p.y) < 1.1);
+      const inside = obstaclesNow().some(o => o(p.x, p.y + 0.2));
+      if (!crowded && !inside && shotClear(e, side)) placed = true;
+      else dropEnemy(e);
+    }
+  }
+}
+function startPvp() {
+  G.mode = 'pvp'; G.turn = G.pvpNextFirst || 0; G.state = 'intro'; G.stateT = 0;
+  buildArena();
+  const special = ['bomb', 'shuriken', 'missile'];
+  const shared = ['rock', special[(Math.random() * 3) | 0], special[(Math.random() * 3) | 0], special[(Math.random() * 3) | 0]];
+  G.pvpAmmo = [shared.slice(), shared.slice()];
+  G.ammo = G.pvpAmmo[G.turn];
+  G.proj = null; G.extras = []; G.aim = null; G.loaded = null; G.time = 0; G.damageOn = false; userPan = 0; G.score = 0; G.shots = 0;
+  setHudLevel('PASS & PLAY', '2 PLAYERS');
+  $('hScoreWrap').classList.add('hide'); $('hBar').classList.add('hide'); $('hCreat').classList.add('hide'); $('hPvp').classList.remove('hide');
+  trayKey = ''; G.tsTarget = 1; G.timeScale = 1; G.slowEnd = 0; G.tapTut = null; G.pred = null;
+  document.body.style.background = G.theme.sky[0];
+  hideAll(); $('hud').classList.remove('hide'); showHint('');
+  fitCamera(true); updatePvpHUD();
+  G.pendingCard = null; G.tut = false;
 
 })();
