@@ -3298,5 +3298,301 @@ function startPvp() {
   hideAll(); $('hud').classList.remove('hide'); showHint('');
   fitCamera(true); updatePvpHUD();
   G.pendingCard = null; G.tut = false;
+}
+function endPvpMatch() {
+  const a1 = aliveEnemies(2), a2 = aliveEnemies(1);
+  const winner = a1 > a2 ? 1 : a2 > a1 ? 2 : 0;
+  const wiped = !a1 || !a2;
+  G.pvpNextFirst = winner === 1 ? 1 : 0;
+  G.state = 'won';
+  $('pvpText').textContent = winner ? (winner === 1 ? 'BLUE' : 'RED') + ' WINS!' : 'DRAW!';
+  $('pvpSign').textContent = winner ? 'VICTORY' : 'TIE GAME';
+  $('pvpSub').textContent = wiped ? (winner ? 'All enemy creatures defeated.' : 'Both sides were wiped out!') : 'Out of shots — most creatures left wins.';
+  show('pvpWin'); audio.win();
+}
+function pvpNextTurn() {
+  if (!aliveEnemies(2) || !aliveEnemies(1)) return endPvpMatch();
+  const other = 1 - G.turn;
+  const next = G.pvpAmmo[other].length ? other : G.pvpAmmo[G.turn].length ? G.turn : -1;
+  if (next < 0) return endPvpMatch();
+  G.turn = next; G.ammo = G.pvpAmmo[G.turn];
+  updatePvpHUD();
+  banner(G.turn === 0 ? 'BLUE' : 'RED');
+  G.state = 'play'; G.stateT = 0; userPan = 0;
+  loadNext();
+}
 
+/* =====================================================================
+   UPDATE
+   ===================================================================== */
+function update(rdt) {
+  rdt = Math.min(rdt, 0.033);
+  G.realT += rdt;
+  if (G.slowEnd && G.realT > G.slowEnd) { G.slowEnd = 0; G.tsTarget = 1; }
+  G.timeScale += (G.tsTarget - G.timeScale) * (1 - Math.exp(-rdt * 14));
+  const dt = rdt * G.timeScale;
+  G.time += dt; G.stateT += rdt;
+  const st = G.state;
+  if (st === 'menu') { camL = camFor('aim') + Math.sin(G.time * 0.15) * 0.3; updateParts(dt); return; }
+  if (st === 'paused' || st === 'card' || st === 'won' || st === 'failed') { updateParts(dt); return; }
+  if (st === 'intro') {
+    if (G.stateT > (fitsAll ? 0.7 : 2.1)) {
+      if (G.pendingCard) { showCard(G.pendingCard); }
+      else if (G.mode === 'pvp') { G.state = 'play'; G.damageOn = true; banner(G.turn === 0 ? 'BLUE' : 'RED'); loadNext(); }
+      else beginPlay();
+    }
+  }
+  // physics (runs on scaled time for slow motion)
+  acc += dt; let steps = 0;
+  while (acc >= STEP && steps < MAX_PHYSICS_STEPS) { physicsStep(); acc -= STEP; steps++; }
+  if (steps === MAX_PHYSICS_STEPS && acc > STEP * MAX_PHYSICS_STEPS) acc = STEP * MAX_PHYSICS_STEPS;
+  // loaded projectile hop / pouch spring
+  if (G.loaded && G.loadT < 1) G.loadT += dt / 0.45;
+  if (!G.aim) {
+    const R = restPos(curSide());
+    const springK = 320, damp = Math.exp(-dt * 24);
+    G.pouchV.x = (G.pouchV.x + (R.x - G.pouch.x) * springK * dt) * damp;
+    G.pouchV.y = (G.pouchV.y + (R.y - G.pouch.y) * springK * dt) * damp;
+    G.pouch.x += G.pouchV.x * dt;
+    G.pouch.y += G.pouchV.y * dt;
+    if (Math.hypot(G.pouch.x - R.x, G.pouch.y - R.y) < 0.002 && Math.hypot(G.pouchV.x, G.pouchV.y) < 0.02) {
+      G.pouch.x = R.x; G.pouch.y = R.y; G.pouchV.x = 0; G.pouchV.y = 0;
+    }
+  }
+  // trail
+  if (G.proj && !G.proj.removed && !G.proj.hit) { const p = G.proj.body.getPosition(); const l = trail[trail.length - 1]; if (!l || Math.hypot(l.x - p.x, l.y - p.y) > 0.45) trail.push({ x: p.x, y: p.y }); }
+  if (G.proj && !G.proj.removed && G.proj.boost > 0 && Math.random() < 0.8) { const p = G.proj.body.getPosition(); puff(p.x - G.proj.dir.x * 0.5, p.y - G.proj.dir.y * 0.5, 1, '#ddd', 0.2, 0.4); }
+  // Shots settle and despawn themselves generically in physicsStep; just drop
+  // the UI-facing reference once that entity is actually gone.
+  if (G.proj && G.proj.removed) G.proj = null;
+  if (G.mode === 'campaign' || G.mode === 'daily') campaignFlow(dt); else if (G.mode === 'pvp') pvpFlow(dt);
+  updateTapTutorial(rdt);
+  updateCreatures(); updateTray(); updateAbilityBtn();
+  // tutorial hand
+  if (G.tapTut) { /* hand is showing the tap */ }
+  else if (G.tut && G.state === 'play' && G.loaded && !G.aim && G.loadT >= 1) {
+    const t = (G.time % 2.2) / 2.2, R = restPos(0), a = w2s(R.x, R.y), b = w2s(R.x - 1.3, R.y - 0.55);
+    const u = t < 0.2 ? 0 : t < 0.7 ? easeInOut((t - 0.2) / 0.5) : 1, h = $('hand'), hw = h.offsetWidth;
+    h.style.opacity = t > 0.85 ? String((1 - t) / 0.15) : '1';
+    h.style.transform = 'translate(' + (lerp(a[0], b[0], u) - hw * 0.39) + 'px,' + (lerp(a[1], b[1], u) - hw * 0.05) + 'px) scale(' + (t < 0.2 ? 1.1 - t : 0.92) + ')';
+  } else $('hand').style.opacity = '0';
+  updateCamera(rdt);
+  updateParts(dt);
+}
+function updateTapTutorial(rdt) {
+  const p = G.state === 'play' ? abilityProj() : null;
+  if (p && G.mode === 'campaign' && !save.seenTap[p.type] && !p.hit && p.t > 0.3) {
+    if (!G.tapTut) { G.tapTut = { t: 0 }; showHint('TAP NOW!'); }
+    G.tsTarget = 0.16; G.tapTut.t += rdt;
+    const pos = p.body.getPosition(), [sx, sy] = w2s(pos.x, pos.y), h = $('hand'), hw = h.offsetWidth;
+    const u = (G.tapTut.t % 0.7) / 0.7, sc = u < 0.25 ? 1.05 - u * 0.6 : 0.9 + (u - 0.25) * 0.33;
+    h.style.opacity = '1';
+    h.style.transform = 'translate(' + (sx - hw * 0.39 + hw * 0.25) + 'px,' + (sy - hw * 0.05 + hw * 0.3) + 'px) scale(' + sc.toFixed(3) + ')';
+  } else if (G.tapTut) { G.tapTut = null; if (!G.slowEnd) G.tsTarget = 1; }
+}
+function campaignFlow(dt) {
+  const st = G.state;
+  if (st === 'play') {
+    if (aliveEnemies() === 0) { G.state = 'winwait'; G.stateT = 0; showHint(''); G.tsTarget = 0.3; G.slowEnd = G.realT + 0.9; banner('ALL CLEAR!'); return; }
+    if (!G.loaded) {
+      // No longer waits on the previous shot (G.proj) to finish flying/settling —
+      // only the brief pouch-reset animation gates the next load.
+      if (G.ammo.length) { G.afterShot = (G.afterShot || 0) + dt; if (G.afterShot > 0.25) loadNext(); }
+      else if (!G.proj) { G.state = 'failwait'; G.stateT = 0; }
+    }
+  } else if (st === 'winwait') {
+    if (G.stateT > 1.7 && (calm() || G.stateT > 4)) {
+      if (G.proj) clearShot();
+      G.state = 'bonus'; G.stateT = 0;
+      G.bonusLeft = G.ammo.length + (G.loaded ? 1 : 0);
+      G.ammoBonusTotal = G.bonusLeft * 10000;
+      G.bonusT = 0.3;
+    }
+  } else if (st === 'bonus') {
+    G.bonusT -= dt;
+    if (G.bonusT <= 0) {
+      if (G.bonusLeft > 0) {
+        let x, y;
+        if (G.loaded) { x = G.pouch.x; y = G.pouch.y; G.loaded = null; }
+        else { const q = queuePos(G.ammo.length - 1, 0); x = q.x; y = q.y + 0.4; G.ammo.pop(); }
+        puff(x, y, 6, '#fff', 0.3, 1.5); spark(x, y, 8, '#ffe36a');
+        addScore(1000, x, y + 0.6, '#ffe36a', true); audio.bonus();
+        G.bonusLeft--; G.bonusT = 0.42;
+      } else { G.bonusT = 99; setTimeout(() => { if (G.state === 'bonus') winLevel(); }, 500); }
+    }
+  } else if (st === 'failwait') {
+    if (aliveEnemies() === 0) { G.state = 'winwait'; G.stateT = 0; return; }
+    if (G.stateT > 1.2 && (calm() || G.stateT > 5)) { if (aliveEnemies() === 0) { G.state = 'winwait'; G.stateT = 0; } else failLevel(); }
+  }
+}
+function pvpFlow(dt) {
+  updatePvpHUD();
+  if (G.state === 'play' && !G.proj && !G.loaded && G.shots) { G.state = 'turnwait'; G.stateT = 0; }
+  else if (G.state === 'turnwait') {
+    const dying = ents.some(e => e.kind === 'enemy' && e.dead && !e.popReady);
+    if (G.stateT > 0.8 && ((calm() && !dying) || G.stateT > 4.5)) pvpNextTurn();
+  }
+}
+
+/* =====================================================================
+   INPUT
+   ===================================================================== */
+function pointerWorld(e) { return s2w(e.clientX, e.clientY); }
+function aimPxPerUnit() { return Math.max(ppm, clamp(Math.min(W, H) * 0.3, 120, 300) / MAXPULL); }
+function setAimFromPointer(cx, cy) {
+  const k = aimPxPerUnit(), R = restPos(curSide());
+  const anchor = w2s(R.x, R.y);
+  let dx = (cx - anchor[0]) / k, dy = -(cy - anchor[1]) / k;
+  const l = Math.hypot(dx, dy);
+  if (l > MAXPULL) { dx *= MAXPULL / l; dy *= MAXPULL / l; }
+  G.pouch = { x: R.x + dx, y: Math.max(G.moundH + 0.25, R.y + dy) };
+  G.predDirty = true;
+  const pull = Math.min(l, MAXPULL) / MAXPULL;
+  if (Math.abs(pull - G.lastPull) > 0.12) {
+    audio.stretch(pull);
+    if (pull > 0.88 && G.lastPull <= 0.88 && navigator.vibrate) { try { navigator.vibrate(8); } catch (err) {} }
+    G.lastPull = pull;
+  }
+}
+cv.addEventListener('pointerdown', (e) => {
+  audio.init(); audio.startMusic();
+  if (inspecting) { inspecting = false; if ($('bInspect')) $('bInspect').classList.remove('act'); userPan = 0; }
+  if (G.state === 'intro') { G.stateT = Math.max(G.stateT, 5); return; }
+  if (G.state !== 'play') return;
+  e.preventDefault();
+  // Since a previous shot can still be mid-flight when the next one is ready,
+  // a tap on the pouch must always start the next pull rather than detonate
+  // whatever the last shot was — only fall back to the ability-tap otherwise.
+  if (G.loaded && G.loadT >= 1 && !G.aim) {
+    const w = pointerWorld(e), R = restPos(curSide());
+    const onPouch = Math.hypot(w.x - G.pouch.x, w.y - G.pouch.y) * ppm < Math.max(76, ppm * 1.6)
+      || Math.hypot(w.x - R.x, w.y - R.y) * ppm < Math.max(76, ppm * 1.6);
+    if (onPouch) {
+      G.aim = { id: e.pointerId };
+      G.lastPull = 0;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      setAimFromPointer(e.clientX, e.clientY);
+      return;
+    }
+  }
+  const act = abilityProj();
+  if (act) { triggerAbility(act); return; }
+  if (!fitsAll) { G.pan = { id: e.pointerId, x: e.clientX, cam: camL }; try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } }
+}, { passive: false });
+window.addEventListener('pointermove', (e) => {
+  if (G.aim && e.pointerId === G.aim.id) { setAimFromPointer(e.clientX, e.clientY); return; }
+  if (G.pan && e.pointerId === G.pan.id) { userPan = G.pan.cam - (e.clientX - G.pan.x) / ppm; camL = camFor(userPan); }
+});
+function endPointer(e) {
+  if (G.aim && e.pointerId === G.aim.id) { launch(); return; }
+  if (G.pan && e.pointerId === G.pan.id) G.pan = null;
+}
+window.addEventListener('pointerup', endPointer);
+window.addEventListener('pointercancel', (e) => { if (G.aim && e.pointerId === G.aim.id) G.aim = null; if (G.pan && e.pointerId === G.pan.id) G.pan = null; });
+window.addEventListener('blur', () => { if (G.aim && !G.aim.kb) G.aim = null; G.pan = null; });
+$('abilityBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); audio.init(); const p = abilityProj(); if (p) triggerAbility(p); });
+$('ammoTray').addEventListener('click', () => { const t = G.loaded; if (t) showHint(PROJ[t].name + (PROJ[t].hint ? ' · ' + PROJ[t].hint : ' · A trusty stone')); });
+cv.addEventListener('contextmenu', (e) => e.preventDefault());
+function kbAimApply() {
+  const R = restPos(curSide()), dir = curSide() === 1 ? -1 : 1, pull = MAXPULL * G.kb.pow;
+  G.pouch = { x: R.x - dir * Math.cos(G.kb.ang) * pull, y: Math.max(G.moundH + 0.25, R.y - Math.sin(G.kb.ang) * pull) };
+  G.predDirty = true;
+}
+window.addEventListener('keydown', (e) => {
+  const arrows = { ArrowUp: [0.035, 0], ArrowDown: [-0.035, 0], ArrowRight: [0, 0.03], ArrowLeft: [0, -0.03] };
+  if (arrows[e.code] && G.state === 'play' && G.loaded && G.loadT >= 1 && (!G.aim || G.aim.kb)) {
+    audio.init(); audio.startMusic();
+    if (!G.kb) G.kb = { ang: 0.45, pow: 0.8 };
+    G.kb.ang = clamp(G.kb.ang + arrows[e.code][0], -0.7, 1.45); G.kb.pow = clamp(G.kb.pow + arrows[e.code][1], 0.25, 1);
+    G.aim = { id: 'kb', kb: true }; kbAimApply(); e.preventDefault(); return;
+  }
+  if ((e.code === 'Space' || e.code === 'Enter') && G.state === 'play') {
+    e.preventDefault();
+    if (G.aim && G.aim.kb) { launch(); return; }
+    const act = abilityProj(); if (act) triggerAbility(act);
+    else if (G.loaded && G.loadT >= 1 && !G.aim) { if (!G.kb) G.kb = { ang: 0.45, pow: 0.8 }; G.aim = { id: 'kb', kb: true }; kbAimApply(); }
+    return;
+  }
+  else if (e.code === 'KeyR' && (G.state === 'play' || G.state === 'failwait')) restart();
+  else if (e.code === 'Escape') { if (G.state === 'paused') resume(); else if (G.state === 'play' || G.state === 'turnwait') pause(); }
+});
+window.addEventListener('resize', () => resize());
+
+/* ---------------- buttons ---------------- */
+const tap = (id, fn) => $(id).addEventListener('click', () => { audio.init(); audio.click(); fn(); });
+let prevState = 'play';
+function pause() { if (!['play', 'turnwait', 'winwait', 'failwait', 'bonus', 'intro'].includes(G.state)) return; prevState = G.state; G.state = 'paused'; G.aim = null; syncSoundIcons(); show('pause'); }
+function resume() { hideAll(); G.state = prevState; }
+function restart() { transition(() => { if (G.mode === 'pvp') startPvp(); else if (G.mode === 'daily') startDaily(); else startLevel(G.levelIdx); }); }
+let inspecting = false;
+function toggleInspect() {
+  if (G.state !== 'play') return;
+  inspecting = !inspecting;
+  const btn = $('bInspect');
+  if (btn) btn.classList.toggle('act', inspecting);
+  if (inspecting) {
+    userPan = G.maxX - viewW() * 0.72;
+    showHint('SCOUTING FORTRESS · TAP INSPECT AGAIN OR DRAG TO AIM');
+  } else {
+    userPan = 0;
+    showHint('');
+  }
+}
+tap('bInspect', toggleInspect);
+tap('bPause', pause); tap('bRestart', restart);
+tap('bResume', resume); tap('bPRestart', restart);
+tap('bGuide', () => { buildGuide('weapons'); show('guideModal'); });
+tap('bPGuide', () => { buildGuide('weapons'); show('guideModal'); });
+tap('bGuideClose', () => { if (G.state === 'paused') show('pause'); else show('title'); });
+tap('gtabWeapons', () => buildGuide('weapons'));
+tap('gtabMaterials', () => buildGuide('materials'));
+tap('gtabTactics', () => buildGuide('tactics'));
+tap('bPLevels', () => transition(() => { if (G.mode === 'pvp' || G.mode === 'daily') goTitle(); else { goTitle(); buildLevelSelect(); show('levels'); } }));
+tap('togSound', () => { save.sound = !save.sound; persist(); syncSoundIcons(); });
+tap('togMusic', () => { save.music = !save.music; persist(); audio.startMusic(); audio.setMusic(save.music); syncSoundIcons(); });
+tap('bMusicT', () => { save.music = !save.music; persist(); audio.startMusic(); audio.setMusic(save.music); syncSoundIcons(); });
+tap('bSoundT', () => { save.sound = !save.sound; persist(); syncSoundIcons(); });
+tap('bPlay', () => { audio.startMusic(); transition(() => startLevel(nextLevelToPlay())); });
+tap('bLevels', () => { audio.startMusic(); buildLevelSelect(); show('levels'); });
+tap('bDaily', () => { audio.startMusic(); showDailyBoard(); });
+tap('bDailyBack', () => goTitle());
+tap('bDailyStart', () => { audio.startMusic(); transition(startDaily); });
+tap('b2p', () => transition(startPvp));
+tap('bShop', () => { buildShop(); show('shop'); });
+tap('tCoinPill', () => { buildShop(); show('shop'); });
+tap('bShopClose', () => { $('tCoins').textContent = save.coins; show('title'); });
+tap('bLvBack', () => show('title'));
+tap('bWLevels', () => { const mode = G.mode; transition(() => { goTitle(); if (mode === 'campaign') { buildLevelSelect(); show('levels'); } }); });
+tap('bWReplay', () => { if (G.mode === 'daily') transition(startDaily); else restart(); });
+tap('bWNext', () => { if (G.mode === 'campaign') transition(() => startLevel(G.levelIdx + 1)); });
+tap('bFLevels', () => { const mode = G.mode; transition(() => { goTitle(); if (mode === 'campaign') { buildLevelSelect(); show('levels'); } }); });
+tap('bFRetry', restart);
+tap('bFSkip', () => { if (G.mode !== 'campaign') return; const n = G.levelIdx + 1; save.unlocked = Math.max(save.unlocked || 1, n + 1); delete save.fails[String(G.levelIdx)]; save.skipped = save.skipped || {}; save.skipped[G.levelIdx] = true; persist(); transition(() => startLevel(n)); });
+let rotDismissed = false;
+function checkRotate() { const need = H > W * 1.15 && !rotDismissed && ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || W < 720); $('rotate').classList.toggle('hide', !need); }
+tap('bRotOk', () => { rotDismissed = true; checkRotate(); });
+tap('bCardOk', () => { save.seen[G.pendingCard] = true; persist(); G.pendingCard = null; hideAll(); beginPlay(); });
+tap('bPvAgain', () => transition(startPvp));
+tap('bPvMenu', () => transition(goTitle));
+document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'play' && !G.proj) pause(); });
+
+/* =====================================================================
+   MAIN LOOP
+   ===================================================================== */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000)); last = now;
+  if (!G.freeze) { update(dt); render(dt); }
+  audio.tickMusic();
+  requestAnimationFrame(frame);
+}
+resize();
+checkRotate();
+goTitle();
+setLoad(1);
+requestAnimationFrame((t) => { last = t; requestAnimationFrame(frame); });
+setTimeout(() => $('loading').classList.add('fade'), 200);
+}
+
+boot();
 })();
